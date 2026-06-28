@@ -1,6 +1,12 @@
+<div align="center">
+
+<img src="logo.png" alt="Delphin logo" width="160"/>
+
 # Delphin 🐬
 
-A **duplex companion for AI agent CLIs**, written in Rust.
+**A duplex companion for AI agent CLIs**, written in Rust.
+
+</div>
 
 *Delphin* — from the Greek **delphís** (dolphin), with a fin tipped to **Delphi**.
 Dolphins swim in pods, bow-ride alongside ships, and talk in a constant stream of
@@ -90,6 +96,30 @@ Or turn memory off entirely with `--no-log`.
 --db PATH          remember into this SQLite file instead of the default
 --no-log           do not remember the conversation
 ```
+
+## Use it as a Claude Code or Codex skill
+
+Delphin ships skills for both agents so you can recall, run, or set it up from
+inside your assistant (e.g. *"recall my last Delphin session"*, *"search Delphin
+memory for the migration"*).
+
+**Claude Code** — copy the skill into your skills directory:
+```bash
+# project-scoped:
+cp -r .claude/skills/delphin <your-project>/.claude/skills/
+# or user-wide:
+cp -r .claude/skills/delphin ~/.claude/skills/
+```
+Then it triggers automatically, or invoke it with `/delphin`.
+
+**Codex** — copy the prompt into your Codex prompts directory:
+```bash
+cp .codex/prompts/delphin.md ~/.codex/prompts/
+```
+Then run `/delphin` (e.g. `/delphin recall migration`).
+
+Both skills know how to query Delphin's `agent_turns` memory and how to build/run
+the wrapper.
 
 ## Honest caveats (v1)
 
