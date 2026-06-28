@@ -26,6 +26,10 @@ pub struct Settings {
     pub submit: Vec<u8>,
     pub interrupt_bytes: Vec<u8>,
     pub interrupt_label: String,
+    /// Substrings that, when the agent's (ANSI-stripped) output tail ends with
+    /// one, mean it's waiting for input — flip to idle immediately instead of
+    /// waiting out the silence timer. Empty = pure silence detection.
+    pub ready_markers: Vec<String>,
     pub rows: u16,
     pub cols: u16,
 }
@@ -144,6 +148,7 @@ pub fn run(
     let mut last_activity = Instant::now();
     let mut busy_since = Instant::now();
     let mut agent_buf: Vec<u8> = Vec::new();
+    let mut force_idle = false; // set when a ready-marker is seen in the output
 
     let flush_agent = |buf: &mut Vec<u8>, memlog: &Option<MemoryLog>| {
         if buf.is_empty() {
@@ -180,9 +185,18 @@ pub fn run(
                 phase = AgentPhase::Busy;
                 last_activity = Instant::now();
                 agent_buf.extend_from_slice(&bytes);
+                // Smarter idle: if the output now ends with a "ready" prompt, the
+                // agent is waiting for us — go idle on the next tick instead of
+                // waiting out the full silence window.
+                if tail_is_ready(&agent_buf, &settings.ready_markers) {
+                    force_idle = true;
+                }
             }
             Event::Tick => {
-                if phase == AgentPhase::Busy && last_activity.elapsed() >= idle_after {
+                if phase == AgentPhase::Busy
+                    && (force_idle || last_activity.elapsed() >= idle_after)
+                {
+                    force_idle = false;
                     phase = AgentPhase::Idle;
                     flush_agent(&mut agent_buf, &memlog);
                     if let Some(item) = queue.pop() {
@@ -273,4 +287,42 @@ fn spawn_ticker(tx: Sender<Event>, period: Duration) {
             break;
         }
     });
+}
+
+/// True if the (ANSI-stripped) tail of the agent's output ends with one of the
+/// configured ready markers — i.e. the agent is showing a prompt and waiting.
+fn tail_is_ready(buf: &[u8], markers: &[String]) -> bool {
+    if markers.is_empty() {
+        return false;
+    }
+    let start = buf.len().saturating_sub(256);
+    let clean = crate::memory::strip_ansi(&String::from_utf8_lossy(&buf[start..]));
+    let tail = clean.trim_end();
+    markers.iter().any(|m| {
+        let m = m.trim_end();
+        !m.is_empty() && tail.ends_with(m)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tail_is_ready;
+
+    #[test]
+    fn ready_marker_detection() {
+        let markers = vec!["you> ".to_string(), "❯ ".to_string()];
+        // prompt at the end (with ANSI + trailing space) -> ready
+        assert!(tail_is_ready(
+            b"thinking...\n\x1b[32myou> \x1b[0m",
+            &markers
+        ));
+        assert!(tail_is_ready("done\n❯ ".as_bytes(), &markers));
+        // mid-output, not a trailing prompt -> not ready
+        assert!(!tail_is_ready(
+            b"you> typed something then more output",
+            &markers
+        ));
+        // no markers configured -> never ready (pure silence detection)
+        assert!(!tail_is_ready(b"you> ", &[]));
+    }
 }

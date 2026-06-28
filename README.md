@@ -145,9 +145,54 @@ Or turn memory off entirely with `--no-log`.
 --tick-ms N        idle-detector tick interval (ms) [150]
 --submit-newline   submit prompts with "\n" instead of "\r"
 --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
+--arbiter KIND     heuristic | question [heuristic]
+--ready MARKER     output ending with MARKER means the agent is idle (repeatable)
 --db PATH          remember into this SQLite file instead of the default
 --no-log           do not remember the conversation
 ```
+
+### Arbiter policies
+
+The policy that decides *wait vs interrupt* is swappable with `--arbiter`:
+
+- **`heuristic`** (default) — protect the in-flight work; only an urgency word
+  ("stop", "wait", "no", "actually", …) interrupts.
+- **`question`** — also interrupt on **questions** (ends with "?", or starts with
+  who/what/why/how/…), since a question usually needs answering before the
+  current work is useful. Plain instructions still queue.
+
+### Smarter idle detection
+
+By default "idle" is inferred from output silence (`--idle-ms`). If your agent
+prints a recognizable prompt when it's waiting, tell Delphin and it'll go idle
+the moment that prompt appears instead of waiting out the timer:
+
+```bash
+delphin --ready 'you> ' --ready '❯ ' -- bash examples/mock-agent.sh
+```
+
+### Config file
+
+Defaults can live in `./.delphin.toml` (or `<config-dir>/delphin/config.toml`);
+CLI flags override them:
+
+```toml
+idle_ms = 1000
+interrupt = "ctrl-c"
+arbiter = "question"
+ready_markers = ["you> ", "❯ "]
+```
+
+## Recall — query your conversation memory
+
+```bash
+delphin recall postgres                 # search remembered turns
+delphin recall                          # most recent turns
+delphin recall --db /path/to.sqlite3 --limit 50 "auth"
+```
+
+Each line shows the date, session, direction, the arbiter's verdict, and the
+remembered text.
 
 ## Use it as a Claude Code or Codex skill
 

@@ -15,6 +15,8 @@ chrono = "0.4"
 dirs = "5"
 portable-pty = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [dev-dependencies]
 # Used by the e2e integration test to read back the recorded SQLite memory.
