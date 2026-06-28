@@ -1,0 +1,13 @@
+{
+  "name": "delphin",
+  "description": "Duplex companion for AI agent CLIs — keep talking while the agent thinks, and recall every conversation. Skill: recall Delphin's local memory, or build/run the wrapper.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Isabel Wu"
+  },
+  "homepage": "https://github.com/wuisabel-gif/Delphin",
+  "repository": "https://github.com/wuisabel-gif/Delphin",
+  "license": "MIT",
+  "keywords": ["delphin", "agent", "cli", "duplex", "memory", "claude", "codex"],
+  "skills": "skills/"
+}

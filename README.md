@@ -55,6 +55,35 @@ but:
                         └───────────┘
 ```
 
+## Motivation
+
+The idea for Delphin came after watching the release of **Interaction Models** by
+Thinking Machines Lab, led by Mira Murati, in May 2026. Their central argument was
+that today's AI interactions are constrained by a turn-based interface: while the
+user is speaking, the model waits; while the model is generating, it stops
+perceiving new information. They argued that this creates a communication
+bottleneck and that future AI systems should support continuous, duplex
+interaction rather than alternating turns. *(Thinking Machines Lab)*
+
+That immediately reminded me of an experience I had using Claude Code. I had asked
+it to work on a development task, and it spent nearly fifteen minutes implementing
+something that turned out not to be what I intended. The problem wasn't simply
+that it misunderstood the request—misunderstandings happen in any collaboration.
+The frustrating part was that there was no natural way to say, "Wait, that's not
+what I meant," without interrupting the entire session and discarding the work
+already in progress. Looking back, I also realized that the agent never paused to
+ask the clarifying question that a human collaborator would likely have asked
+before investing fifteen minutes in the wrong direction.
+
+That experience convinced me that part of the problem lies not in the model's
+reasoning, but in the interaction model surrounding it. Delphin explores that idea
+from a systems perspective. Instead of training a new foundation model, it wraps
+today's AI agent CLIs and upgrades them from half-duplex to a more duplex style of
+interaction: you can continue communicating while the agent works, and a
+supervisor decides whether each new message should be delivered immediately,
+queued until the agent finishes, or used to interrupt the current task. It is an
+attempt to improve human–AI collaboration today, using the agents we already have.
+
 ## Why it matters
 
 AI coding agents are becoming long-running collaborators rather than single-shot
@@ -123,14 +152,19 @@ Delphin ships skills for both agents so you can recall, run, or set it up from
 inside your assistant (e.g. *"recall my last Delphin session"*, *"search Delphin
 memory for the migration"*).
 
-**Claude Code** — copy the skill into your skills directory:
-```bash
-# project-scoped:
-cp -r .claude/skills/delphin <your-project>/.claude/skills/
-# or user-wide:
-cp -r .claude/skills/delphin ~/.claude/skills/
+**Claude Code — install as a plugin (recommended):** this repo is a Claude Code
+marketplace, so you can install Delphin's skill directly:
+```text
+/plugin marketplace add wuisabel-gif/Delphin
+/plugin install delphin@delphin
 ```
 Then it triggers automatically, or invoke it with `/delphin`.
+
+**Claude Code — manual copy (alternative):**
+```bash
+cp -r skills/delphin ~/.claude/skills/        # user-wide
+# or: cp -r skills/delphin <your-project>/.claude/skills/
+```
 
 **Codex** — copy the prompt into your Codex prompts directory:
 ```bash
@@ -139,7 +173,7 @@ cp .codex/prompts/delphin.md ~/.codex/prompts/
 Then run `/delphin` (e.g. `/delphin recall migration`).
 
 Both skills know how to query Delphin's `agent_turns` memory and how to build/run
-the wrapper.
+the wrapper. Plugin manifests live in [`.claude-plugin/`](.claude-plugin/).
 
 ## Honest caveats (v1)
 

@@ -1,0 +1,18 @@
+{
+  "name": "delphin",
+  "owner": {
+    "name": "Isabel Wu"
+  },
+  "metadata": {
+    "description": "Claude Code plugin for Delphin — a duplex companion for AI agent CLIs.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "delphin",
+      "description": "Duplex companion for AI agent CLIs — recall the conversation memory, or build/run the wrapper.",
+      "source": "./",
+      "strict": true
+    }
+  ]
+}
