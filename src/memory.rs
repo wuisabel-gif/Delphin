@@ -206,7 +206,9 @@ mod tests {
         assert_eq!(verdict.as_deref(), Some("enqueue"));
         assert_eq!(text, "also add logging");
         let agent_text: String = conn
-            .query_row("SELECT text FROM agent_turns WHERE id = 2", [], |r| r.get(0))
+            .query_row("SELECT text FROM agent_turns WHERE id = 2", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(agent_text, "hello");
         let _ = std::fs::remove_dir_all(&dir);

@@ -44,7 +44,11 @@ macro_rules! notice {
     }};
 }
 
-pub fn run(settings: &Settings, arbiter: Box<dyn Arbiter>, memlog: Option<MemoryLog>) -> Result<()> {
+pub fn run(
+    settings: &Settings,
+    arbiter: Box<dyn Arbiter>,
+    memlog: Option<MemoryLog>,
+) -> Result<()> {
     let program = settings
         .agent_command
         .first()
@@ -72,7 +76,10 @@ pub fn run(settings: &Settings, arbiter: Box<dyn Arbiter>, memlog: Option<Memory
     }
 
     let mut child = pair.slave.spawn_command(cmd).context("spawning agent")?;
-    let mut reader = pair.master.try_clone_reader().context("cloning pty reader")?;
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .context("cloning pty reader")?;
     let mut writer = pair.master.take_writer().context("taking pty writer")?;
     drop(pair.slave);
     let _master = pair.master;
