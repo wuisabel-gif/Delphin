@@ -50,6 +50,21 @@ but:
                         └───────────┘
 ```
 
+## Why it matters
+
+AI coding agents are becoming long-running collaborators rather than single-shot
+assistants. As they take on larger tasks—indexing repositories, generating code,
+running tests, or refactoring—they spend much of their time thinking while the
+user waits. Current CLIs treat interaction as half-duplex: either the agent is
+working or the human is speaking, but not both. Delphin removes this artificial
+constraint. By allowing users to continue providing context without discarding
+the agent's ongoing work, it makes conversations with AI agents feel closer to
+conversations with people. At the same time, its local SQLite memory creates a
+transparent, inspectable record of every interaction that remains entirely under
+the user's control. Delphin doesn't replace an AI agent; it improves the
+communication layer around one, making long-running human–AI collaboration
+smoother, less interruptive, and more resilient.
+
 ## Try it (no real model needed)
 
 ```bash
