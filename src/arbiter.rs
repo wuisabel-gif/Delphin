@@ -46,8 +46,18 @@ pub trait Arbiter: Send {
 }
 
 pub const DEFAULT_INTERRUPT_KEYWORDS: &[&str] = &[
-    "stop", "wait", "no", "cancel", "abort", "actually", "hold on", "nevermind",
-    "never mind", "scratch that", "urgent", "halt",
+    "stop",
+    "wait",
+    "no",
+    "cancel",
+    "abort",
+    "actually",
+    "hold on",
+    "nevermind",
+    "never mind",
+    "scratch that",
+    "urgent",
+    "halt",
 ];
 
 pub struct HeuristicArbiter {
@@ -66,12 +76,19 @@ impl HeuristicArbiter {
 
     #[allow(dead_code)] // used by tests and downstream callers
     pub fn with_defaults() -> Self {
-        Self::new(DEFAULT_INTERRUPT_KEYWORDS.iter().map(|s| s.to_string()).collect())
+        Self::new(
+            DEFAULT_INTERRUPT_KEYWORDS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
     }
 
     fn signals_interrupt(&self, text: &str) -> bool {
         let hay = text.to_lowercase();
-        self.interrupt_keywords.iter().any(|kw| contains_word(&hay, kw))
+        self.interrupt_keywords
+            .iter()
+            .any(|kw| contains_word(&hay, kw))
     }
 }
 
@@ -128,10 +145,20 @@ mod tests {
     use super::*;
 
     fn busy(text: &str) -> Decision {
-        Decision { phase: AgentPhase::Busy, text: text.into(), busy_elapsed_ms: 1000, queue_len: 0 }
+        Decision {
+            phase: AgentPhase::Busy,
+            text: text.into(),
+            busy_elapsed_ms: 1000,
+            queue_len: 0,
+        }
     }
     fn idle(text: &str) -> Decision {
-        Decision { phase: AgentPhase::Idle, text: text.into(), busy_elapsed_ms: 0, queue_len: 0 }
+        Decision {
+            phase: AgentPhase::Idle,
+            text: text.into(),
+            busy_elapsed_ms: 0,
+            queue_len: 0,
+        }
     }
 
     #[test]
@@ -144,16 +171,28 @@ mod tests {
     #[test]
     fn busy_queues_normal_prompts() {
         let a = HeuristicArbiter::with_defaults();
-        assert_eq!(a.decide(&busy("also add a dark mode toggle")), Verdict::Enqueue);
-        assert_eq!(a.decide(&busy("what is the capital of France?")), Verdict::Enqueue);
+        assert_eq!(
+            a.decide(&busy("also add a dark mode toggle")),
+            Verdict::Enqueue
+        );
+        assert_eq!(
+            a.decide(&busy("what is the capital of France?")),
+            Verdict::Enqueue
+        );
     }
 
     #[test]
     fn busy_interrupts_on_keyword() {
         let a = HeuristicArbiter::with_defaults();
         assert_eq!(a.decide(&busy("stop, wrong file")), Verdict::Interrupt);
-        assert_eq!(a.decide(&busy("wait — use rust not go")), Verdict::Interrupt);
-        assert_eq!(a.decide(&busy("actually never mind the tests")), Verdict::Interrupt);
+        assert_eq!(
+            a.decide(&busy("wait — use rust not go")),
+            Verdict::Interrupt
+        );
+        assert_eq!(
+            a.decide(&busy("actually never mind the tests")),
+            Verdict::Interrupt
+        );
         assert_eq!(a.decide(&busy("NO don't push")), Verdict::Interrupt);
     }
 
@@ -161,7 +200,10 @@ mod tests {
     fn keywords_match_whole_words_only() {
         let a = HeuristicArbiter::with_defaults();
         assert_eq!(a.decide(&busy("add a stopgap measure")), Verdict::Enqueue);
-        assert_eq!(a.decide(&busy("nope handling looks fine")), Verdict::Enqueue);
+        assert_eq!(
+            a.decide(&busy("nope handling looks fine")),
+            Verdict::Enqueue
+        );
     }
 
     #[test]

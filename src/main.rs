@@ -100,11 +100,15 @@ fn real_main() -> anyhow::Result<()> {
                     .clone()
             }
             "--db" => {
-                let p = it.next().ok_or_else(|| anyhow::anyhow!("--db requires a path"))?;
+                let p = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--db requires a path"))?;
                 db = Some(PathBuf::from(p));
             }
             "--no-log" => logging = false,
-            other => anyhow::bail!("unknown option `{other}` (did you forget `--` before the agent command?)"),
+            other => anyhow::bail!(
+                "unknown option `{other}` (did you forget `--` before the agent command?)"
+            ),
         }
     }
 
@@ -117,7 +121,11 @@ fn real_main() -> anyhow::Result<()> {
         agent_command: agent_cmd,
         idle_after_ms: idle_ms,
         tick_ms,
-        submit: if submit_newline { b"\n".to_vec() } else { b"\r".to_vec() },
+        submit: if submit_newline {
+            b"\n".to_vec()
+        } else {
+            b"\r".to_vec()
+        },
         interrupt_bytes: interrupt_bytes(&interrupt),
         interrupt_label: interrupt,
         rows: 40,
@@ -125,12 +133,21 @@ fn real_main() -> anyhow::Result<()> {
     };
 
     let arbiter = Box::new(HeuristicArbiter::new(
-        DEFAULT_INTERRUPT_KEYWORDS.iter().map(|s| s.to_string()).collect(),
+        DEFAULT_INTERRUPT_KEYWORDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     ));
 
     let memlog = if logging {
-        let session_id = format!("delphin-{}-{}", Utc::now().format("%Y%m%dT%H%M%SZ"), std::process::id());
-        let cwd = std::env::current_dir().ok().and_then(|p| p.to_str().map(str::to_string));
+        let session_id = format!(
+            "delphin-{}-{}",
+            Utc::now().format("%Y%m%dT%H%M%SZ"),
+            std::process::id()
+        );
+        let cwd = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(str::to_string));
         match MemoryLog::open(session_id, cwd, db) {
             Ok(ml) => Some(ml),
             Err(e) => {

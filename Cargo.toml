@@ -16,5 +16,9 @@ dirs = "5"
 portable-pty = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
+[dev-dependencies]
+# Used by the e2e integration test to read back the recorded SQLite memory.
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 [profile.release]
 opt-level = 2
