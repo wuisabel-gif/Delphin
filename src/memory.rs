@@ -182,6 +182,63 @@ pub fn strip_ansi(input: &str) -> String {
     out
 }
 
+/// One row returned by [`search`].
+#[derive(Debug, Clone)]
+pub struct RecalledTurn {
+    pub session_id: String,
+    pub ts: String,
+    pub direction: String,
+    pub verdict: Option<String>,
+    pub text: String,
+}
+
+/// Search the conversation memory for turns whose text matches `query`
+/// (case-insensitive substring). An empty query returns the most recent turns.
+/// Newest first, capped at `limit`. Read-only; returns an empty Vec if the
+/// database doesn't exist yet.
+pub fn search(
+    db_path: Option<PathBuf>,
+    query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<RecalledTurn>> {
+    let path = match db_path {
+        Some(p) => p,
+        None => default_db_path()?,
+    };
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let conn =
+        Connection::open(&path).with_context(|| format!("opening database {}", path.display()))?;
+    let map = |r: &rusqlite::Row<'_>| {
+        Ok(RecalledTurn {
+            session_id: r.get(0)?,
+            ts: r.get(1)?,
+            direction: r.get(2)?,
+            verdict: r.get(3)?,
+            text: r.get(4)?,
+        })
+    };
+    let q = query.trim();
+    let rows = if q.is_empty() {
+        conn.prepare(
+            "SELECT session_id, ts, direction, verdict, text \
+             FROM agent_turns ORDER BY id DESC LIMIT ?1",
+        )?
+        .query_map(params![limit as i64], map)?
+        .collect::<Result<Vec<_>, _>>()?
+    } else {
+        let pattern = format!("%{q}%");
+        conn.prepare(
+            "SELECT session_id, ts, direction, verdict, text \
+             FROM agent_turns WHERE text LIKE ?1 ORDER BY id DESC LIMIT ?2",
+        )?
+        .query_map(params![pattern, limit as i64], map)?
+        .collect::<Result<Vec<_>, _>>()?
+    };
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,7 +263,9 @@ mod tests {
         assert_eq!(verdict.as_deref(), Some("enqueue"));
         assert_eq!(text, "also add logging");
         let agent_text: String = conn
-            .query_row("SELECT text FROM agent_turns WHERE id = 2", [], |r| r.get(0))
+            .query_row("SELECT text FROM agent_turns WHERE id = 2", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(agent_text, "hello");
         let _ = std::fs::remove_dir_all(&dir);
@@ -215,5 +274,33 @@ mod tests {
     #[test]
     fn strip_ansi_removes_escapes() {
         assert_eq!(strip_ansi("\x1b[31mhi\x1b[0m\r\nthere"), "hi\nthere");
+    }
+
+    #[test]
+    fn search_finds_matching_turns() {
+        let dir = std::env::temp_dir().join(format!("delphin-search-{}", std::process::id()));
+        let db = dir.join("delphin.sqlite3");
+        let _ = std::fs::remove_dir_all(&dir);
+        let ml = MemoryLog::open("s1", None, Some(db.clone())).unwrap();
+        ml.user("use Postgres for storage", "enqueue");
+        ml.user("add a logging flag", "send_now");
+        ml.agent("I'll set up Postgres now");
+
+        let hits = search(Some(db.clone()), "postgres", 10).unwrap();
+        assert_eq!(hits.len(), 2, "should match both Postgres turns");
+        assert!(hits
+            .iter()
+            .all(|h| h.text.to_lowercase().contains("postgres")));
+
+        // empty query -> most recent turns (all 3), newest first
+        let recent = search(Some(db.clone()), "", 10).unwrap();
+        assert_eq!(recent.len(), 3);
+        assert_eq!(recent[0].direction, "agent");
+
+        // missing DB -> empty, no error
+        let none = search(Some(dir.join("nope.sqlite3")), "x", 5).unwrap();
+        assert!(none.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

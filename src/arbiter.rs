@@ -46,8 +46,18 @@ pub trait Arbiter: Send {
 }
 
 pub const DEFAULT_INTERRUPT_KEYWORDS: &[&str] = &[
-    "stop", "wait", "no", "cancel", "abort", "actually", "hold on", "nevermind",
-    "never mind", "scratch that", "urgent", "halt",
+    "stop",
+    "wait",
+    "no",
+    "cancel",
+    "abort",
+    "actually",
+    "hold on",
+    "nevermind",
+    "never mind",
+    "scratch that",
+    "urgent",
+    "halt",
 ];
 
 pub struct HeuristicArbiter {
@@ -66,12 +76,19 @@ impl HeuristicArbiter {
 
     #[allow(dead_code)] // used by tests and downstream callers
     pub fn with_defaults() -> Self {
-        Self::new(DEFAULT_INTERRUPT_KEYWORDS.iter().map(|s| s.to_string()).collect())
+        Self::new(
+            DEFAULT_INTERRUPT_KEYWORDS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
     }
 
     fn signals_interrupt(&self, text: &str) -> bool {
         let hay = text.to_lowercase();
-        self.interrupt_keywords.iter().any(|kw| contains_word(&hay, kw))
+        self.interrupt_keywords
+            .iter()
+            .any(|kw| contains_word(&hay, kw))
     }
 }
 
@@ -91,6 +108,102 @@ impl Arbiter for HeuristicArbiter {
 
     fn name(&self) -> &str {
         "heuristic"
+    }
+}
+
+/// Like the heuristic, but also treats **questions** as interrupt-worthy: while
+/// the agent is busy, a question (or an urgency keyword) barges in; plain
+/// statements / added instructions queue. Rationale: a question usually needs an
+/// answer before the agent's current work is even useful.
+pub struct QuestionArbiter {
+    heuristic: HeuristicArbiter,
+}
+
+impl QuestionArbiter {
+    pub fn new(interrupt_keywords: Vec<String>) -> Self {
+        Self {
+            heuristic: HeuristicArbiter::new(interrupt_keywords),
+        }
+    }
+}
+
+/// Heuristic question detector: ends with "?", or starts with a wh-/aux word.
+fn looks_like_question(text: &str) -> bool {
+    let t = text.trim();
+    if t.ends_with('?') {
+        return true;
+    }
+    let first = t.split_whitespace().next().unwrap_or("").to_lowercase();
+    matches!(
+        first.as_str(),
+        "who"
+            | "what"
+            | "why"
+            | "how"
+            | "when"
+            | "where"
+            | "which"
+            | "whose"
+            | "whom"
+            | "is"
+            | "are"
+            | "do"
+            | "does"
+            | "did"
+            | "can"
+            | "could"
+            | "should"
+            | "would"
+            | "will"
+            | "am"
+            | "was"
+            | "were"
+            | "have"
+            | "has"
+    )
+}
+
+impl Arbiter for QuestionArbiter {
+    fn decide(&self, ctx: &Decision) -> Verdict {
+        match ctx.phase {
+            AgentPhase::Idle => Verdict::SendNow,
+            AgentPhase::Busy => {
+                if self.heuristic.signals_interrupt(&ctx.text) || looks_like_question(&ctx.text) {
+                    Verdict::Interrupt
+                } else {
+                    Verdict::Enqueue
+                }
+            }
+        }
+    }
+
+    fn name(&self) -> &str {
+        "question"
+    }
+}
+
+/// Which arbiter policy to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArbiterKind {
+    Heuristic,
+    Question,
+}
+
+impl ArbiterKind {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "heuristic" => Some(Self::Heuristic),
+            "question" | "questions" => Some(Self::Question),
+            _ => None,
+        }
+    }
+}
+
+/// Construct the selected arbiter policy.
+pub fn build_arbiter(kind: ArbiterKind, interrupt_keywords: Vec<String>) -> Box<dyn Arbiter> {
+    match kind {
+        ArbiterKind::Heuristic => Box::new(HeuristicArbiter::new(interrupt_keywords)),
+        ArbiterKind::Question => Box::new(QuestionArbiter::new(interrupt_keywords)),
     }
 }
 
@@ -128,10 +241,20 @@ mod tests {
     use super::*;
 
     fn busy(text: &str) -> Decision {
-        Decision { phase: AgentPhase::Busy, text: text.into(), busy_elapsed_ms: 1000, queue_len: 0 }
+        Decision {
+            phase: AgentPhase::Busy,
+            text: text.into(),
+            busy_elapsed_ms: 1000,
+            queue_len: 0,
+        }
     }
     fn idle(text: &str) -> Decision {
-        Decision { phase: AgentPhase::Idle, text: text.into(), busy_elapsed_ms: 0, queue_len: 0 }
+        Decision {
+            phase: AgentPhase::Idle,
+            text: text.into(),
+            busy_elapsed_ms: 0,
+            queue_len: 0,
+        }
     }
 
     #[test]
@@ -144,16 +267,28 @@ mod tests {
     #[test]
     fn busy_queues_normal_prompts() {
         let a = HeuristicArbiter::with_defaults();
-        assert_eq!(a.decide(&busy("also add a dark mode toggle")), Verdict::Enqueue);
-        assert_eq!(a.decide(&busy("what is the capital of France?")), Verdict::Enqueue);
+        assert_eq!(
+            a.decide(&busy("also add a dark mode toggle")),
+            Verdict::Enqueue
+        );
+        assert_eq!(
+            a.decide(&busy("what is the capital of France?")),
+            Verdict::Enqueue
+        );
     }
 
     #[test]
     fn busy_interrupts_on_keyword() {
         let a = HeuristicArbiter::with_defaults();
         assert_eq!(a.decide(&busy("stop, wrong file")), Verdict::Interrupt);
-        assert_eq!(a.decide(&busy("wait — use rust not go")), Verdict::Interrupt);
-        assert_eq!(a.decide(&busy("actually never mind the tests")), Verdict::Interrupt);
+        assert_eq!(
+            a.decide(&busy("wait — use rust not go")),
+            Verdict::Interrupt
+        );
+        assert_eq!(
+            a.decide(&busy("actually never mind the tests")),
+            Verdict::Interrupt
+        );
         assert_eq!(a.decide(&busy("NO don't push")), Verdict::Interrupt);
     }
 
@@ -161,7 +296,10 @@ mod tests {
     fn keywords_match_whole_words_only() {
         let a = HeuristicArbiter::with_defaults();
         assert_eq!(a.decide(&busy("add a stopgap measure")), Verdict::Enqueue);
-        assert_eq!(a.decide(&busy("nope handling looks fine")), Verdict::Enqueue);
+        assert_eq!(
+            a.decide(&busy("nope handling looks fine")),
+            Verdict::Enqueue
+        );
     }
 
     #[test]
@@ -169,5 +307,53 @@ mod tests {
         let a = HeuristicArbiter::new(vec!["pause".to_string()]);
         assert_eq!(a.decide(&busy("pause please")), Verdict::Interrupt);
         assert_eq!(a.decide(&busy("stop please")), Verdict::Enqueue);
+    }
+
+    #[test]
+    fn question_arbiter_interrupts_questions_queues_commands() {
+        let a = QuestionArbiter::new(
+            DEFAULT_INTERRUPT_KEYWORDS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        // questions barge in
+        assert_eq!(
+            a.decide(&busy("what database are we using?")),
+            Verdict::Interrupt
+        );
+        assert_eq!(
+            a.decide(&busy("how does the arbiter decide")),
+            Verdict::Interrupt
+        );
+        // urgency keyword still interrupts
+        assert_eq!(a.decide(&busy("stop that")), Verdict::Interrupt);
+        // plain instructions queue
+        assert_eq!(a.decide(&busy("also add a logging flag")), Verdict::Enqueue);
+        // idle always sends now
+        assert_eq!(a.decide(&idle("what is this?")), Verdict::SendNow);
+    }
+
+    #[test]
+    fn question_detection() {
+        assert!(looks_like_question("why did that fail?"));
+        assert!(looks_like_question("How should we store this"));
+        assert!(!looks_like_question("add a dark mode toggle"));
+        assert!(!looks_like_question("rename the config flag"));
+    }
+
+    #[test]
+    fn arbiter_kind_parse() {
+        assert_eq!(
+            ArbiterKind::parse("heuristic"),
+            Some(ArbiterKind::Heuristic)
+        );
+        assert_eq!(ArbiterKind::parse("question"), Some(ArbiterKind::Question));
+        assert_eq!(ArbiterKind::parse("questions"), Some(ArbiterKind::Question));
+        assert_eq!(ArbiterKind::parse("nope"), None);
+        assert_eq!(
+            build_arbiter(ArbiterKind::Question, vec![]).name(),
+            "question"
+        );
     }
 }
