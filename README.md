@@ -10,8 +10,11 @@
 [![Codex skill](https://img.shields.io/badge/Codex-skill_available-412991?logo=openai&logoColor=white)](.codex/prompts/delphin.md)
 [![Rust](https://img.shields.io/badge/Rust-CE422B?logo=rust&logoColor=white)](Cargo.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3da639)](#license)
+[![Sibling: MemoryWhale](https://img.shields.io/badge/sibling-MemoryWhale%20%F0%9F%90%8B-2b43dd)](https://github.com/wuisabel-gif/MemWhale)
 
 </div>
+
+> 🐋 **Sibling project:** [MemoryWhale](https://github.com/wuisabel-gif/MemWhale) — the **memory** layer. Delphin handles *communication* (talk while the agent thinks); MemoryWhale handles *memory* (recall with explanations). They refer to each other — see [ECOSYSTEM.md](ECOSYSTEM.md). Point Delphin at MemoryWhale's database with `--db` to feed your conversations into it.
 
 *Delphin* — from the Greek **delphís** (dolphin), with a fin tipped to **Delphi**.
 Dolphins swim in pods, bow-ride alongside ships, and talk in a constant stream of
