@@ -6,6 +6,11 @@
 
 **A duplex companion for AI agent CLIs**, written in Rust.
 
+[![Claude Code skill](https://img.shields.io/badge/Claude_Code-skill_available-D97757?logo=anthropic&logoColor=white)](.claude/skills/delphin/SKILL.md)
+[![Codex skill](https://img.shields.io/badge/Codex-skill_available-412991?logo=openai&logoColor=white)](.codex/prompts/delphin.md)
+[![Rust](https://img.shields.io/badge/Rust-CE422B?logo=rust&logoColor=white)](Cargo.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3da639)](#license)
+
 </div>
 
 *Delphin* — from the Greek **delphís** (dolphin), with a fin tipped to **Delphi**.
