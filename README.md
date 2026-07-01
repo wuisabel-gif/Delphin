@@ -38,6 +38,8 @@ but:
   - **send now** — agent is idle, forward immediately;
   - **enqueue** — agent is busy and the prompt can wait (the default — a
     half-finished thought is worth protecting);
+  - **stream** — in `--live` mode, agent is busy but the prompt should be
+    forwarded immediately without interrupting;
   - **interrupt** — agent is busy but you signalled urgency ("stop", "wait",
     "no", "actually", …), so it barges in.
 - **It remembers.** Every prompt, the arbiter's verdict, and the agent's reply
@@ -50,7 +52,7 @@ but:
                         ┌─────────────┐  busy?   ┌───────────┐
    agent output ◀───────│  supervisor │─────────▶│  arbiter  │
    (mirrored to you)    │ (PTY + idle │          └───────────┘
-                        │  detection) │  verdict: send / enqueue / interrupt
+                        │  detection) │  verdict: send / enqueue / stream / interrupt
                         └─────┬───────┘
                               ▼                  every turn ──▶ SQLite (agent_turns)
                         ┌───────────┐
@@ -113,6 +115,19 @@ While the mock is "thinking" (printing dots):
 - type `also add logging` → it **queues**, sent when the mock finishes;
 - type `stop wrong thing` → it **interrupts** and sends your line.
 
+For rich TUI agents that already accept type-ahead while generating, try live
+mode:
+
+```bash
+cargo run --release -- --live --interrupt esc -- claude
+cargo run --release -- --live --interrupt esc -- codex
+```
+
+`--live` streams ordinary busy prompts straight into the wrapped PTY instead of
+holding them in Delphin's FIFO. The agent still decides whether it can actually
+use that input mid-generation: rich TUIs may place it in their compose buffer,
+while line-oriented programs usually just receive it on their next `read`.
+
 ## Use it with a real agent
 
 ```bash
@@ -144,6 +159,7 @@ Or turn memory off entirely with `--no-log`.
 --idle-ms N        silence (ms) before the agent is considered idle [800]
 --tick-ms N        idle-detector tick interval (ms) [150]
 --submit-newline   submit prompts with "\n" instead of "\r"
+--live             stream busy prompts immediately instead of queueing
 --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
 --arbiter KIND     heuristic | question [heuristic]
 --ready MARKER     output ending with MARKER means the agent is idle (repeatable)
@@ -231,6 +247,9 @@ the wrapper. Plugin manifests live in [`.claude-plugin/`](.claude-plugin/).
   Set `--interrupt` accordingly; `none` gives queue-only mode.
 - **Line-oriented input.** Delphin reads whole lines; rich TUIs may render
   imperfectly. Line-based agents work cleanly.
+- **Live mode depends on the wrapped agent.** `--live` delivers input bytes
+  immediately, but only agents that accept type-ahead or mid-generation input
+  can make that feel genuinely simultaneous.
 
 ## Layout
 

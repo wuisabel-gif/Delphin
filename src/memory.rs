@@ -71,7 +71,7 @@ impl MemoryLog {
                 session_id TEXT NOT NULL,
                 ts TEXT NOT NULL,
                 direction TEXT NOT NULL,   -- 'user' | 'agent' | 'system'
-                verdict TEXT,              -- 'send_now' | 'enqueue' | 'interrupt' | NULL
+                verdict TEXT,              -- 'send_now' | 'enqueue' | 'interrupt' | 'stream' | NULL
                 text TEXT NOT NULL,
                 cwd TEXT
             );

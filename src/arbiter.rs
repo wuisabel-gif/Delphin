@@ -5,7 +5,8 @@
 //! Default policy: **the in-flight thinking is protected.** While the agent is
 //! busy a new prompt is *queued*, UNLESS the user signals urgency with an
 //! interrupt word ("stop", "wait", "no", "actually", …), in which case delphin
-//! barges in. When the agent is idle, everything is sent immediately.
+//! barges in. In live mode, ordinary busy prompts are streamed through instead
+//! of queued. When the agent is idle, everything is sent immediately.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentPhase {
@@ -28,6 +29,7 @@ pub enum Verdict {
     SendNow,
     Interrupt,
     Enqueue,
+    Stream,
 }
 
 impl Verdict {
@@ -36,6 +38,7 @@ impl Verdict {
             Verdict::SendNow => "send_now",
             Verdict::Interrupt => "interrupt",
             Verdict::Enqueue => "enqueue",
+            Verdict::Stream => "stream",
         }
     }
 }
@@ -62,15 +65,21 @@ pub const DEFAULT_INTERRUPT_KEYWORDS: &[&str] = &[
 
 pub struct HeuristicArbiter {
     interrupt_keywords: Vec<String>,
+    stream_while_busy: bool,
 }
 
 impl HeuristicArbiter {
     pub fn new(interrupt_keywords: Vec<String>) -> Self {
+        Self::new_with_mode(interrupt_keywords, false)
+    }
+
+    pub fn new_with_mode(interrupt_keywords: Vec<String>, stream_while_busy: bool) -> Self {
         Self {
             interrupt_keywords: interrupt_keywords
                 .into_iter()
                 .map(|k| k.to_lowercase())
                 .collect(),
+            stream_while_busy,
         }
     }
 
@@ -99,6 +108,8 @@ impl Arbiter for HeuristicArbiter {
             AgentPhase::Busy => {
                 if self.signals_interrupt(&ctx.text) {
                     Verdict::Interrupt
+                } else if self.stream_while_busy {
+                    Verdict::Stream
                 } else {
                     Verdict::Enqueue
                 }
@@ -120,9 +131,14 @@ pub struct QuestionArbiter {
 }
 
 impl QuestionArbiter {
+    #[allow(dead_code)] // used by tests and downstream callers
     pub fn new(interrupt_keywords: Vec<String>) -> Self {
+        Self::new_with_mode(interrupt_keywords, false)
+    }
+
+    pub fn new_with_mode(interrupt_keywords: Vec<String>, stream_while_busy: bool) -> Self {
         Self {
-            heuristic: HeuristicArbiter::new(interrupt_keywords),
+            heuristic: HeuristicArbiter::new_with_mode(interrupt_keywords, stream_while_busy),
         }
     }
 }
@@ -170,6 +186,8 @@ impl Arbiter for QuestionArbiter {
             AgentPhase::Busy => {
                 if self.heuristic.signals_interrupt(&ctx.text) || looks_like_question(&ctx.text) {
                     Verdict::Interrupt
+                } else if self.heuristic.stream_while_busy {
+                    Verdict::Stream
                 } else {
                     Verdict::Enqueue
                 }
@@ -200,10 +218,20 @@ impl ArbiterKind {
 }
 
 /// Construct the selected arbiter policy.
-pub fn build_arbiter(kind: ArbiterKind, interrupt_keywords: Vec<String>) -> Box<dyn Arbiter> {
+pub fn build_arbiter(
+    kind: ArbiterKind,
+    interrupt_keywords: Vec<String>,
+    stream_while_busy: bool,
+) -> Box<dyn Arbiter> {
     match kind {
-        ArbiterKind::Heuristic => Box::new(HeuristicArbiter::new(interrupt_keywords)),
-        ArbiterKind::Question => Box::new(QuestionArbiter::new(interrupt_keywords)),
+        ArbiterKind::Heuristic => Box::new(HeuristicArbiter::new_with_mode(
+            interrupt_keywords,
+            stream_while_busy,
+        )),
+        ArbiterKind::Question => Box::new(QuestionArbiter::new_with_mode(
+            interrupt_keywords,
+            stream_while_busy,
+        )),
     }
 }
 
@@ -352,8 +380,36 @@ mod tests {
         assert_eq!(ArbiterKind::parse("questions"), Some(ArbiterKind::Question));
         assert_eq!(ArbiterKind::parse("nope"), None);
         assert_eq!(
-            build_arbiter(ArbiterKind::Question, vec![]).name(),
+            build_arbiter(ArbiterKind::Question, vec![], false).name(),
             "question"
         );
+    }
+
+    #[test]
+    fn live_mode_streams_normal_busy_prompts() {
+        let a = HeuristicArbiter::new_with_mode(
+            DEFAULT_INTERRUPT_KEYWORDS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            true,
+        );
+        assert_eq!(a.decide(&busy("also add logging")), Verdict::Stream);
+        assert_eq!(a.decide(&busy("stop wrong file")), Verdict::Interrupt);
+        assert_eq!(a.decide(&idle("also add logging")), Verdict::SendNow);
+    }
+
+    #[test]
+    fn question_live_mode_still_interrupts_questions() {
+        let a = QuestionArbiter::new_with_mode(
+            DEFAULT_INTERRUPT_KEYWORDS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            true,
+        );
+        assert_eq!(a.decide(&busy("also add logging")), Verdict::Stream);
+        assert_eq!(a.decide(&busy("what file is this?")), Verdict::Interrupt);
+        assert_eq!(a.decide(&busy("stop wrong file")), Verdict::Interrupt);
     }
 }

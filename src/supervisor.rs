@@ -174,7 +174,7 @@ pub fn run(
             None => "off".to_string(),
         }
     );
-    notice!("type normally; prompts queue while the agent thinks. Say 'stop'/'wait' to barge in. Ctrl-D to quit.");
+    notice!("type normally; busy prompts may queue or stream depending on the arbiter. Say 'stop'/'wait' to barge in. Ctrl-D to quit.");
 
     while let Ok(ev) = rx.recv() {
         match ev {
@@ -253,6 +253,10 @@ pub fn run(
                     Verdict::Enqueue => {
                         let id = queue.push(text);
                         notice!("agent busy -> queued #{} ({} waiting)", id, queue.len());
+                    }
+                    Verdict::Stream => {
+                        notice!("agent busy -> streaming: {}", text);
+                        send_prompt(&mut writer, text.as_bytes(), &settings.submit)?;
                     }
                 }
             }

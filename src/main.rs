@@ -37,6 +37,7 @@ OPTIONS:
     --idle-ms N        silence (ms) before the agent is considered idle [800]
     --tick-ms N        idle-detector tick interval (ms) [150]
     --submit-newline   submit prompts with \"\\n\" instead of \"\\r\"
+    --live             stream busy prompts immediately instead of queueing
     --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
     --arbiter KIND     heuristic | question [heuristic]
     --ready MARKER     output ending with MARKER means the agent is idle
@@ -92,6 +93,7 @@ fn real_main() -> anyhow::Result<()> {
     let mut submit_newline = cfg.submit_newline;
     let mut interrupt = cfg.interrupt.clone();
     let mut arbiter_name = cfg.arbiter.clone();
+    let mut live = cfg.live;
     let mut ready_markers = cfg.ready_markers.clone();
     let mut logging = cfg.log;
     let mut db: Option<PathBuf> = None;
@@ -102,6 +104,7 @@ fn real_main() -> anyhow::Result<()> {
             "--idle-ms" => idle_ms = parse_num(it.next(), "--idle-ms")?,
             "--tick-ms" => tick_ms = parse_num(it.next(), "--tick-ms")?,
             "--submit-newline" => submit_newline = true,
+            "--live" => live = true,
             "--interrupt" => interrupt = next_val(it.next(), "--interrupt")?,
             "--arbiter" => arbiter_name = next_val(it.next(), "--arbiter")?,
             "--ready" => ready_markers.push(next_val(it.next(), "--ready")?),
@@ -145,7 +148,7 @@ fn real_main() -> anyhow::Result<()> {
         cols: 120,
     };
 
-    let arbiter = build_arbiter(arbiter_kind, cfg.interrupt_keywords.clone());
+    let arbiter = build_arbiter(arbiter_kind, cfg.interrupt_keywords.clone(), live);
 
     let memlog = if logging {
         let session_id = format!(

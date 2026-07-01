@@ -6,6 +6,7 @@
 //! idle_ms = 1000
 //! interrupt = "ctrl-c"
 //! arbiter = "question"
+//! live = false
 //! ready_markers = ["you> ", "❯ "]
 //! ```
 
@@ -23,6 +24,7 @@ pub struct Config {
     pub interrupt: String,
     pub submit_newline: bool,
     pub arbiter: String,
+    pub live: bool,
     /// Substrings that, when the agent's output ends with one, mean it's waiting
     /// for input (idle) — flips out of "busy" immediately instead of waiting for
     /// the silence timer.
@@ -39,6 +41,7 @@ impl Default for Config {
             interrupt: "esc".into(),
             submit_newline: false,
             arbiter: "heuristic".into(),
+            live: false,
             ready_markers: Vec::new(),
             interrupt_keywords: DEFAULT_INTERRUPT_KEYWORDS
                 .iter()
@@ -90,6 +93,7 @@ mod tests {
         // unspecified fields keep defaults
         assert_eq!(cfg.tick_ms, 150);
         assert_eq!(cfg.interrupt, "esc");
+        assert!(!cfg.live);
         assert!(cfg.log);
         assert!(!cfg.interrupt_keywords.is_empty());
     }
