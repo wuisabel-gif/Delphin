@@ -239,18 +239,6 @@ Then run `/delphin` (e.g. `/delphin recall migration`).
 Both skills know how to query Delphin's `agent_turns` memory and how to build/run
 the wrapper. Plugin manifests live in [`.claude-plugin/`](.claude-plugin/).
 
-## Honest caveats (v1)
-
-- **Idle = silence.** "Is the agent thinking?" is inferred from output silence
-  (`--idle-ms`); there's no portable readiness API, so it needs per-agent tuning.
-- **Interrupting is agent-specific.** ESC stops Claude Code; many CLIs use Ctrl-C.
-  Set `--interrupt` accordingly; `none` gives queue-only mode.
-- **Line-oriented input.** Delphin reads whole lines; rich TUIs may render
-  imperfectly. Line-based agents work cleanly.
-- **Live mode depends on the wrapped agent.** `--live` delivers input bytes
-  immediately, but only agents that accept type-ahead or mid-generation input
-  can make that feel genuinely simultaneous.
-
 ## Layout
 
 | File | Role |

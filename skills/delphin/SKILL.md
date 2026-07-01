@@ -55,13 +55,5 @@ With `--live`, ordinary busy prompts stream immediately into the wrapped PTY
 instead of queueing; this is most useful for rich TUI agents that accept
 type-ahead while generating.
 
-## Notes / gotchas
-
-- "Thinking" is inferred from output **silence** (`--idle-ms`, default 800ms) —
-  tune per agent if it releases prompts mid-thought or feels sluggish.
-- The interrupt key is **agent-specific**: ESC stops Claude Code; many CLIs use
-  Ctrl-C. Set `--interrupt` accordingly; `none` = queue-only mode.
-- `--live` only guarantees immediate delivery to the PTY. The wrapped agent
-  decides whether that input is visible or useful mid-generation.
-- Use `--db <other.sqlite3>` to make Delphin write into another tool's database
-  (e.g. share memory with a companion app).
+Use `--db <other.sqlite3>` to make Delphin write into another tool's database
+(e.g. share memory with a companion app).
