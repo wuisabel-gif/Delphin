@@ -6,7 +6,7 @@
 
 **A duplex companion for AI agent CLIs**, written in Rust.
 
-[![Claude Code skill](https://img.shields.io/badge/Claude_Code-skill_available-D97757?logo=anthropic&logoColor=white)](.claude/skills/delphin/SKILL.md)
+[![Claude Code skill](https://img.shields.io/badge/Claude_Code-skill_available-D97757?logo=anthropic&logoColor=white)](skills/delphin/SKILL.md)
 [![Codex skill](https://img.shields.io/badge/Codex-skill_available-412991?logo=openai&logoColor=white)](.codex/prompts/delphin.md)
 [![Rust](https://img.shields.io/badge/Rust-CE422B?logo=rust&logoColor=white)](Cargo.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3da639)](#license)
@@ -41,10 +41,16 @@ but:
   - **stream** — in `--live` mode, agent is busy but the prompt should be
     forwarded immediately without interrupting;
   - **interrupt** — agent is busy but you signalled urgency ("stop", "wait",
-    "no", "actually", …), so it barges in.
+    "cancel", "halt", …), so it barges in.
 - **It remembers.** Every prompt, the arbiter's verdict, and the agent's reply
   are written to a local SQLite file (`agent_turns`) — your conversation history,
   on your machine, nowhere else.
+
+> **Honest scope:** this is *asynchronous handoff*, not simultaneous listening.
+> Your words reach the agent sooner (queued, streamed, or as a barge-in) instead
+> of after you wait — but the agent still perceives them between turns, not
+> mid-token. Delphin makes "talk while it thinks" ergonomic on today's CLIs; it
+> doesn't make the model itself duplex.
 
 ```
         you type ──────────────┐
@@ -157,10 +163,12 @@ Or turn memory off entirely with `--no-log`.
 
 ```
 --idle-ms N        silence (ms) before the agent is considered idle [800]
+--min-busy-ms N    minimum busy time before silence counts as idle [0]
 --tick-ms N        idle-detector tick interval (ms) [150]
 --submit-newline   submit prompts with "\n" instead of "\r"
 --live             stream busy prompts immediately instead of queueing
 --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
+--interrupt-word W add W to the urgency words that barge in (repeatable)
 --arbiter KIND     heuristic | question [heuristic]
 --ready MARKER     output ending with MARKER means the agent is idle (repeatable)
 --db PATH          remember into this SQLite file instead of the default
@@ -172,7 +180,8 @@ Or turn memory off entirely with `--no-log`.
 The policy that decides *wait vs interrupt* is swappable with `--arbiter`:
 
 - **`heuristic`** (default) — protect the in-flight work; only an urgency word
-  ("stop", "wait", "no", "actually", …) interrupts.
+  ("stop", "wait", "cancel", "halt", …) interrupts. Add your own with
+  `--interrupt-word` (repeatable) or `interrupt_keywords` in the config file.
 - **`question`** — also interrupt on **questions** (ends with "?", or starts with
   who/what/why/how/…), since a question usually needs answering before the
   current work is useful. Plain instructions still queue.
@@ -186,6 +195,16 @@ the moment that prompt appears instead of waiting out the timer:
 ```bash
 delphin --ready 'you> ' --ready '❯ ' -- bash examples/mock-agent.sh
 ```
+
+Two guards make silence-based detection less twitchy:
+
+- **`--min-busy-ms N`** — a silence gap doesn't count as idle until the agent has
+  been busy at least this long, so a brief stall right after a prompt can't flip
+  idle instantly.
+- **Mid-line guard (always on)** — if the agent's output ends mid-line it's
+  probably still drawing, so Delphin waits a few more idle windows before
+  releasing. It's bounded, so an agent that simply ends without a newline can't
+  wedge the queue.
 
 ### Config file
 
@@ -244,11 +263,13 @@ the wrapper. Plugin manifests live in [`.claude-plugin/`](.claude-plugin/).
 | File | Role |
 |---|---|
 | `src/main.rs` | CLI parsing, wiring |
-| `src/supervisor.rs` | PTY spawn, idle detection, event loop |
+| `src/config.rs` | optional `.delphin.toml` defaults (+ tests) |
+| `src/supervisor.rs` | PTY spawn, idle detection, event loop (+ tests) |
 | `src/arbiter.rs` | `Arbiter` trait + default heuristic (+ tests) |
 | `src/queue.rs` | prompt FIFO (+ tests) |
 | `src/memory.rs` | self-contained SQLite log (+ tests) |
 | `examples/mock-agent.sh` | fake thinking agent for testing |
+| `tests/` | end-to-end tests against the mock agent |
 
 ## Tests
 
