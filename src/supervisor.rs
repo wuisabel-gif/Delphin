@@ -19,9 +19,19 @@ use crate::arbiter::{AgentPhase, Arbiter, Decision, Verdict};
 use crate::memory::MemoryLog;
 use crate::queue::PromptQueue;
 
+/// How many idle windows to wait before releasing when the agent's output ends
+/// mid-line (still likely drawing). Bounded so a newline-less prompt can't wedge
+/// the queue forever.
+// ponytail: raise this if a slow token-streaming agent still gets interrupted
+// mid-thought; it only affects the no-ready-marker path.
+const MIDLINE_GRACE: u32 = 3;
+
 pub struct Settings {
     pub agent_command: Vec<String>,
     pub idle_after_ms: u64,
+    /// Minimum time the agent must have been busy before a silence gap counts as
+    /// idle — stops a brief early stall from flipping idle instantly. 0 = off.
+    pub min_busy_ms: u64,
     pub tick_ms: u64,
     pub submit: Vec<u8>,
     pub interrupt_bytes: Vec<u8>,
@@ -193,9 +203,17 @@ pub fn run(
                 }
             }
             Event::Tick => {
-                if phase == AgentPhase::Busy
-                    && (force_idle || last_activity.elapsed() >= idle_after)
-                {
+                // A ready marker is definitive; otherwise require silence, plus the
+                // min-busy floor, plus a settled (not mid-line) tail.
+                let idle_now = force_idle || {
+                    let quiet = last_activity.elapsed() >= idle_after;
+                    let past_floor =
+                        busy_since.elapsed() >= Duration::from_millis(settings.min_busy_ms);
+                    let settled = ends_line(&agent_buf)
+                        || last_activity.elapsed() >= idle_after * MIDLINE_GRACE;
+                    quiet && past_floor && settled
+                };
+                if phase == AgentPhase::Busy && idle_now {
                     force_idle = false;
                     phase = AgentPhase::Idle;
                     flush_agent(&mut agent_buf, &memlog);
@@ -308,9 +326,34 @@ fn tail_is_ready(buf: &[u8], markers: &[String]) -> bool {
     })
 }
 
+/// True if the agent's output tail ends a line (finished a chunk) rather than
+/// mid-line (still drawing). ANSI codes and trailing spaces/tabs are ignored; an
+/// empty/whitespace tail counts as ended (nothing meaningful is pending).
+fn ends_line(buf: &[u8]) -> bool {
+    if buf.is_empty() {
+        return true;
+    }
+    let start = buf.len().saturating_sub(256);
+    let clean = crate::memory::strip_ansi(&String::from_utf8_lossy(&buf[start..]));
+    let tail = clean.trim_end_matches([' ', '\t']);
+    tail.is_empty() || tail.ends_with('\n')
+}
+
 #[cfg(test)]
 mod tests {
-    use super::tail_is_ready;
+    use super::{ends_line, tail_is_ready};
+
+    #[test]
+    fn ends_line_detects_mid_line_output() {
+        assert!(ends_line(b"a finished line\n"));
+        assert!(ends_line(b"trailing spaces then newline\n   "));
+        assert!(ends_line(b"")); // nothing pending
+        // mid-line: no newline -> still drawing
+        assert!(!ends_line(b"half a lin"));
+        assert!(!ends_line("done\nyou> ".as_bytes()));
+        // ANSI colour codes are ignored
+        assert!(!ends_line(b"\x1b[32myou> \x1b[0m"));
+    }
 
     #[test]
     fn ready_marker_detection() {

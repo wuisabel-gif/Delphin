@@ -35,6 +35,7 @@ USAGE:
 
 OPTIONS:
     --idle-ms N        silence (ms) before the agent is considered idle [800]
+    --min-busy-ms N    minimum busy time before silence counts as idle [0]
     --tick-ms N        idle-detector tick interval (ms) [150]
     --submit-newline   submit prompts with \"\\n\" instead of \"\\r\"
     --live             stream busy prompts immediately instead of queueing
@@ -90,6 +91,7 @@ fn real_main() -> anyhow::Result<()> {
 
     // Start from config (or built-in defaults); CLI flags override.
     let mut idle_ms = cfg.idle_ms;
+    let mut min_busy_ms = cfg.min_busy_ms;
     let mut tick_ms = cfg.tick_ms;
     let mut submit_newline = cfg.submit_newline;
     let mut interrupt = cfg.interrupt.clone();
@@ -104,6 +106,7 @@ fn real_main() -> anyhow::Result<()> {
     while let Some(flag) = it.next() {
         match flag.as_str() {
             "--idle-ms" => idle_ms = parse_num(it.next(), "--idle-ms")?,
+            "--min-busy-ms" => min_busy_ms = parse_num(it.next(), "--min-busy-ms")?,
             "--tick-ms" => tick_ms = parse_num(it.next(), "--tick-ms")?,
             "--submit-newline" => submit_newline = true,
             "--live" => live = true,
@@ -140,6 +143,7 @@ fn real_main() -> anyhow::Result<()> {
     let settings = Settings {
         agent_command: agent_cmd,
         idle_after_ms: idle_ms,
+        min_busy_ms,
         tick_ms,
         submit: if submit_newline {
             b"\n".to_vec()

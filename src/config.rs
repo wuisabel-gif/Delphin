@@ -20,6 +20,8 @@ use crate::arbiter::DEFAULT_INTERRUPT_KEYWORDS;
 #[serde(default)]
 pub struct Config {
     pub idle_ms: u64,
+    /// Minimum busy time before a silence gap counts as idle (0 = off).
+    pub min_busy_ms: u64,
     pub tick_ms: u64,
     pub interrupt: String,
     pub submit_newline: bool,
@@ -37,6 +39,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             idle_ms: 800,
+            min_busy_ms: 0,
             tick_ms: 150,
             interrupt: "esc".into(),
             submit_newline: false,
