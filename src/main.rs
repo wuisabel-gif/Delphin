@@ -40,6 +40,7 @@ OPTIONS:
     --live             stream busy prompts immediately instead of queueing
     --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
     --arbiter KIND     heuristic | question [heuristic]
+    --interrupt-word W add W to the urgency words that barge in (repeatable)
     --ready MARKER     output ending with MARKER means the agent is idle
                        (repeatable; e.g. --ready 'you> ')
     --db PATH          remember into this SQLite file instead of the default
@@ -95,6 +96,7 @@ fn real_main() -> anyhow::Result<()> {
     let mut arbiter_name = cfg.arbiter.clone();
     let mut live = cfg.live;
     let mut ready_markers = cfg.ready_markers.clone();
+    let mut interrupt_keywords = cfg.interrupt_keywords.clone();
     let mut logging = cfg.log;
     let mut db: Option<PathBuf> = None;
 
@@ -108,6 +110,9 @@ fn real_main() -> anyhow::Result<()> {
             "--interrupt" => interrupt = next_val(it.next(), "--interrupt")?,
             "--arbiter" => arbiter_name = next_val(it.next(), "--arbiter")?,
             "--ready" => ready_markers.push(next_val(it.next(), "--ready")?),
+            "--interrupt-word" => {
+                interrupt_keywords.push(next_val(it.next(), "--interrupt-word")?)
+            }
             "--db" => db = Some(PathBuf::from(next_val(it.next(), "--db")?)),
             "--no-log" => logging = false,
             other => anyhow::bail!(
@@ -148,7 +153,7 @@ fn real_main() -> anyhow::Result<()> {
         cols: 120,
     };
 
-    let arbiter = build_arbiter(arbiter_kind, cfg.interrupt_keywords.clone(), live);
+    let arbiter = build_arbiter(arbiter_kind, interrupt_keywords, live);
 
     let memlog = if logging {
         let session_id = format!(
