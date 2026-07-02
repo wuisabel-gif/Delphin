@@ -221,8 +221,16 @@ fn run_recall(args: &[String]) -> anyhow::Result<()> {
             .as_deref()
             .map(|v| format!(" [{v}]"))
             .unwrap_or_default();
+        // Group tag ties a prompt to its release and the reply it triggered.
+        let group = h
+            .turn_group_id
+            .map(|g| format!(" g{g}"))
+            .unwrap_or_default();
         let text: String = h.text.replace('\n', " ").chars().take(100).collect();
-        println!("{date}  ({session})  {:<7}{verdict}  {text}", h.direction);
+        println!(
+            "{date}  ({session}{group})  {:<7}{verdict}  {text}",
+            h.direction
+        );
     }
     Ok(())
 }

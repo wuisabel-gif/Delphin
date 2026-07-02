@@ -159,15 +159,17 @@ pub fn run(
     let mut busy_since = Instant::now();
     let mut agent_buf: Vec<u8> = Vec::new();
     let mut force_idle = false; // set when a ready-marker is seen in the output
+    let mut next_group: u64 = 0; // monotonic id minted per user prompt
+    let mut current_group: u64 = 0; // group the agent's current output belongs to (0 = boot)
 
-    let flush_agent = |buf: &mut Vec<u8>, memlog: &Option<MemoryLog>| {
+    let flush_agent = |buf: &mut Vec<u8>, memlog: &Option<MemoryLog>, group: u64| {
         if buf.is_empty() {
             return;
         }
         if let Some(ml) = memlog {
             let text = String::from_utf8_lossy(buf);
             if !text.trim().is_empty() {
-                ml.agent(&text);
+                ml.agent(&text, group);
             }
         }
         buf.clear();
@@ -216,11 +218,15 @@ pub fn run(
                 if phase == AgentPhase::Busy && idle_now {
                     force_idle = false;
                     phase = AgentPhase::Idle;
-                    flush_agent(&mut agent_buf, &memlog);
+                    flush_agent(&mut agent_buf, &memlog, current_group);
                     if let Some(item) = queue.pop() {
                         notice!("agent idle -> sending queued #{}: {}", item.id, item.text);
+                        current_group = item.group;
                         if let Some(ml) = &memlog {
-                            ml.system(&format!("released #{}: {}", item.id, item.text));
+                            ml.system(
+                                &format!("released #{}: {}", item.id, item.text),
+                                current_group,
+                            );
                         }
                         send_prompt(&mut writer, item.text.as_bytes(), &settings.submit)?;
                         phase = AgentPhase::Busy;
@@ -245,11 +251,14 @@ pub fn run(
                     queue_len: queue.len(),
                 };
                 let verdict = arbiter.decide(&ctx);
+                next_group += 1;
+                let group = next_group;
                 if let Some(ml) = &memlog {
-                    ml.user(&text, verdict.as_str());
+                    ml.user(&text, verdict.as_str(), group);
                 }
                 match verdict {
                     Verdict::SendNow => {
+                        current_group = group;
                         send_prompt(&mut writer, text.as_bytes(), &settings.submit)?;
                         phase = AgentPhase::Busy;
                         busy_since = Instant::now();
@@ -262,18 +271,25 @@ pub fn run(
                             writer.flush()?;
                             thread::sleep(Duration::from_millis(150));
                         }
-                        flush_agent(&mut agent_buf, &memlog);
+                        // the interrupted partial reply belongs to the old prompt
+                        flush_agent(&mut agent_buf, &memlog, current_group);
+                        current_group = group;
                         send_prompt(&mut writer, text.as_bytes(), &settings.submit)?;
                         phase = AgentPhase::Busy;
                         busy_since = Instant::now();
                         last_activity = Instant::now();
                     }
                     Verdict::Enqueue => {
-                        let id = queue.push(text);
+                        let id = queue.push(text, group);
                         notice!("agent busy -> queued #{} ({} waiting)", id, queue.len());
                     }
                     Verdict::Stream => {
                         notice!("agent busy -> streaming: {}", text);
+                        // ponytail: output attribution in live mode is best-effort —
+                        // flush what the prior prompt produced, then the newest prompt
+                        // owns what follows.
+                        flush_agent(&mut agent_buf, &memlog, current_group);
+                        current_group = group;
                         send_prompt(&mut writer, text.as_bytes(), &settings.submit)?;
                     }
                 }
@@ -289,7 +305,7 @@ pub fn run(
         }
     }
 
-    flush_agent(&mut agent_buf, &memlog);
+    flush_agent(&mut agent_buf, &memlog, current_group);
     let _ = child.kill();
     let _ = child.wait();
     Ok(())

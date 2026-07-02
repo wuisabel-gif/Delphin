@@ -10,6 +10,9 @@ use std::collections::VecDeque;
 pub struct QueuedPrompt {
     pub id: u64,
     pub text: String,
+    /// Group id minted when the prompt was typed; reused on release so the queued
+    /// prompt, its release row, and the resulting reply all share one group.
+    pub group: u64,
 }
 
 #[derive(Default)]
@@ -23,10 +26,10 @@ impl PromptQueue {
         Self::default()
     }
 
-    pub fn push(&mut self, text: String) -> u64 {
+    pub fn push(&mut self, text: String, group: u64) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
-        self.items.push_back(QueuedPrompt { id, text });
+        self.items.push_back(QueuedPrompt { id, text, group });
         id
     }
 
@@ -52,10 +55,12 @@ mod tests {
     fn fifo_order_and_ids() {
         let mut q = PromptQueue::new();
         assert!(q.is_empty());
-        assert_eq!(q.push("first".into()), 1);
-        assert_eq!(q.push("second".into()), 2);
+        assert_eq!(q.push("first".into(), 10), 1);
+        assert_eq!(q.push("second".into(), 11), 2);
         assert_eq!(q.len(), 2);
-        assert_eq!(q.pop().unwrap().text, "first");
+        let first = q.pop().unwrap();
+        assert_eq!(first.text, "first");
+        assert_eq!(first.group, 10);
         assert_eq!(q.pop().unwrap().text, "second");
         assert!(q.pop().is_none());
     }
