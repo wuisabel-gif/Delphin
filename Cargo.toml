@@ -4,6 +4,13 @@ version = "0.2.0"
 edition = "2021"
 description = "A duplex companion for AI agent CLIs: keep talking while it thinks. Prompts queue, a pluggable arbiter decides interrupt-vs-wait, and the whole conversation is remembered locally."
 license = "MIT"
+repository = "https://github.com/wuisabel-gif/Delphin"
+homepage = "https://github.com/wuisabel-gif/Delphin"
+readme = "README.md"
+keywords = ["cli", "ai", "agent", "pty", "duplex"]
+categories = ["command-line-utilities", "development-tools"]
+# Ship only what `cargo install` needs — not the logo, landing page, or plugin files.
+include = ["src/**/*", "examples/**/*", "tests/**/*", "README.md", "LICENSE"]
 
 [[bin]]
 name = "delphin"

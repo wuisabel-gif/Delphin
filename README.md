@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="logo.png" alt="Delphin logo" width="160"/>
+<img src="https://raw.githubusercontent.com/wuisabel-gif/Delphin/main/logo.png" alt="Delphin logo" width="160"/>
 
 # Delphin 🐬
 
