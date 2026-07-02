@@ -40,6 +40,7 @@ OPTIONS:
     --submit-newline   submit prompts with \"\\n\" instead of \"\\r\"
     --live             stream busy prompts immediately instead of queueing
     --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
+    --agent KIND       preset interrupt+live defaults for claude | codex | generic
     --arbiter KIND     heuristic | question [heuristic]
     --interrupt-word W add W to the urgency words that barge in (repeatable)
     --ready MARKER     output ending with MARKER means the agent is idle
@@ -102,6 +103,16 @@ fn real_main() -> anyhow::Result<()> {
     let mut logging = cfg.log;
     let mut db: Option<PathBuf> = None;
 
+    // An --agent preset is a convenience baseline; apply it before the flag loop
+    // so any explicit flag below still wins regardless of argument order.
+    if let Some(name) = flag_value(ours, "--agent") {
+        let (preset_interrupt, preset_live) = agent_preset(&name).ok_or_else(|| {
+            anyhow::anyhow!("unknown --agent '{name}' (use: claude | codex | generic)")
+        })?;
+        interrupt = preset_interrupt.to_string();
+        live = preset_live;
+    }
+
     let mut it = ours.iter();
     while let Some(flag) = it.next() {
         match flag.as_str() {
@@ -111,6 +122,9 @@ fn real_main() -> anyhow::Result<()> {
             "--submit-newline" => submit_newline = true,
             "--live" => live = true,
             "--interrupt" => interrupt = next_val(it.next(), "--interrupt")?,
+            "--agent" => {
+                it.next(); // value already consumed by the pre-scan above
+            }
             "--arbiter" => arbiter_name = next_val(it.next(), "--arbiter")?,
             "--ready" => ready_markers.push(next_val(it.next(), "--ready")?),
             "--interrupt-word" => interrupt_keywords.push(next_val(it.next(), "--interrupt-word")?),
@@ -251,5 +265,39 @@ fn interrupt_bytes(kind: &str) -> Vec<u8> {
         "ctrl-c" => vec![0x03],
         "none" => vec![],
         other => other.as_bytes().to_vec(),
+    }
+}
+
+/// Value that follows `flag` in `args`, if present (first occurrence).
+fn flag_value(args: &[String], flag: &str) -> Option<String> {
+    args.iter()
+        .position(|a| a == flag)
+        .and_then(|i| args.get(i + 1).cloned())
+}
+
+/// Convenience baseline per wrapped agent: (interrupt key, live mode). These are
+/// starting points, not gospel — any explicit flag overrides them.
+// ponytail: two knobs that actually differ between agents (interrupt key and
+// whether the TUI takes type-ahead); everything else stays on the shared default.
+fn agent_preset(name: &str) -> Option<(&'static str, bool)> {
+    match name.to_lowercase().as_str() {
+        // rich TUIs that accept type-ahead and stop on ESC
+        "claude" | "codex" => Some(("esc", true)),
+        // safe default for a line-oriented tool: Ctrl-C, queue (no live)
+        "generic" => Some(("ctrl-c", false)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_preset;
+
+    #[test]
+    fn agent_presets() {
+        assert_eq!(agent_preset("claude"), Some(("esc", true)));
+        assert_eq!(agent_preset("CODEX"), Some(("esc", true))); // case-insensitive
+        assert_eq!(agent_preset("generic"), Some(("ctrl-c", false)));
+        assert_eq!(agent_preset("nope"), None);
     }
 }

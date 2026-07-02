@@ -168,12 +168,26 @@ Or turn memory off entirely with `--no-log`.
 --submit-newline   submit prompts with "\n" instead of "\r"
 --live             stream busy prompts immediately instead of queueing
 --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
+--agent KIND       preset interrupt+live defaults for claude | codex | generic
 --interrupt-word W add W to the urgency words that barge in (repeatable)
 --arbiter KIND     heuristic | question [heuristic]
 --ready MARKER     output ending with MARKER means the agent is idle (repeatable)
 --db PATH          remember into this SQLite file instead of the default
 --no-log           do not remember the conversation
 ```
+
+### Agent presets
+
+Skip tuning flags one by one — `--agent` sets a sensible baseline for a known
+agent (any explicit flag still overrides it):
+
+```bash
+delphin --agent claude -- claude     # esc interrupt + live type-ahead
+delphin --agent generic -- some-repl # ctrl-c interrupt, queue mode
+```
+
+`claude`/`codex` → `--interrupt esc --live`; `generic` → `--interrupt ctrl-c`,
+queue mode. Starting points, not gospel — override any of them explicitly.
 
 ### Arbiter policies
 
