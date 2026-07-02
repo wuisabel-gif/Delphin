@@ -1,6 +1,6 @@
 [package]
 name = "delphin"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A duplex companion for AI agent CLIs: keep talking while it thinks. Prompts queue, a pluggable arbiter decides interrupt-vs-wait, and the whole conversation is remembered locally."
 license = "MIT"
