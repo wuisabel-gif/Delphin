@@ -364,7 +364,7 @@ mod tests {
         assert!(ends_line(b"a finished line\n"));
         assert!(ends_line(b"trailing spaces then newline\n   "));
         assert!(ends_line(b"")); // nothing pending
-        // mid-line: no newline -> still drawing
+                                 // mid-line: no newline -> still drawing
         assert!(!ends_line(b"half a lin"));
         assert!(!ends_line("done\nyou> ".as_bytes()));
         // ANSI colour codes are ignored

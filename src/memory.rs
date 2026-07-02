@@ -81,7 +81,10 @@ impl MemoryLog {
         )?;
         // Additive migration for DBs created before turn_group_id existed; the
         // error when the column is already present is expected and ignored.
-        let _ = conn.execute("ALTER TABLE agent_turns ADD COLUMN turn_group_id INTEGER", []);
+        let _ = conn.execute(
+            "ALTER TABLE agent_turns ADD COLUMN turn_group_id INTEGER",
+            [],
+        );
         Ok(Self {
             conn,
             session_id: session_id.into(),

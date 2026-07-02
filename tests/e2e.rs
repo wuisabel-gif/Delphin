@@ -9,9 +9,10 @@
 //! `--ready 'you> '` keys idle detection off the mock's prompt instead of the
 //! silence timer, so the run is deterministic enough to keep on by default.
 //!
-//! ponytail: verification reads the SQLite memory the run already writes (verdicts
-//! + a "released #N" system row), so no new observation channel is needed. Sleeps
-//! are generous; if a loaded CI still makes it flaky, re-add `#[ignore]`.
+//! ponytail: verification reads the SQLite memory the run already writes (the
+//! verdicts and a "released #N" system row), so no new observation channel is
+//! needed. Sleeps are generous; if a loaded CI still makes it flaky, re-add
+//! `#[ignore]`.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -113,7 +114,10 @@ fn queue_interrupt_release_end_to_end() {
             |r| r.get(0),
         )
         .expect("find release row");
-    assert!(enqueued_group.is_some(), "enqueued prompt should have a group");
+    assert!(
+        enqueued_group.is_some(),
+        "enqueued prompt should have a group"
+    );
     assert_eq!(
         enqueued_group, released_group,
         "the queued prompt and its release must share a turn_group_id"

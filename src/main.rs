@@ -113,9 +113,7 @@ fn real_main() -> anyhow::Result<()> {
             "--interrupt" => interrupt = next_val(it.next(), "--interrupt")?,
             "--arbiter" => arbiter_name = next_val(it.next(), "--arbiter")?,
             "--ready" => ready_markers.push(next_val(it.next(), "--ready")?),
-            "--interrupt-word" => {
-                interrupt_keywords.push(next_val(it.next(), "--interrupt-word")?)
-            }
+            "--interrupt-word" => interrupt_keywords.push(next_val(it.next(), "--interrupt-word")?),
             "--db" => db = Some(PathBuf::from(next_val(it.next(), "--db")?)),
             "--no-log" => logging = false,
             other => anyhow::bail!(
