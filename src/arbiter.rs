@@ -4,7 +4,7 @@
 //!
 //! Default policy: **the in-flight thinking is protected.** While the agent is
 //! busy a new prompt is *queued*, UNLESS the user signals urgency with an
-//! interrupt word ("stop", "wait", "no", "actually", …), in which case delphin
+//! interrupt word ("stop", "wait", "cancel", "halt", …), in which case delphin
 //! barges in. In live mode, ordinary busy prompts are streamed through instead
 //! of queued. When the agent is idle, everything is sent immediately.
 
@@ -48,13 +48,15 @@ pub trait Arbiter: Send {
     fn name(&self) -> &str;
 }
 
+// ponytail: "no" and "actually" left out on purpose — they open ordinary
+// instructions ("no tests needed", "actually use postgres") far too often to be
+// safe barge-in triggers. Users who want them can add them via interrupt_keywords
+// in .delphin.toml.
 pub const DEFAULT_INTERRUPT_KEYWORDS: &[&str] = &[
     "stop",
     "wait",
-    "no",
     "cancel",
     "abort",
-    "actually",
     "hold on",
     "nevermind",
     "never mind",
@@ -317,7 +319,18 @@ mod tests {
             a.decide(&busy("actually never mind the tests")),
             Verdict::Interrupt
         );
-        assert_eq!(a.decide(&busy("NO don't push")), Verdict::Interrupt);
+        assert_eq!(a.decide(&busy("halt, wrong branch")), Verdict::Interrupt);
+    }
+
+    #[test]
+    fn weak_words_do_not_interrupt_by_default() {
+        let a = HeuristicArbiter::with_defaults();
+        // ordinary instructions that merely open with a weak word must queue,
+        // not barge in and kill the in-flight work.
+        assert_eq!(a.decide(&busy("no tests needed")), Verdict::Enqueue);
+        assert_eq!(a.decide(&busy("actually use postgres")), Verdict::Enqueue);
+        // a genuine urgency word still interrupts, even mid-sentence.
+        assert_eq!(a.decide(&busy("please stop the build")), Verdict::Interrupt);
     }
 
     #[test]
