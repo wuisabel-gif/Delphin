@@ -228,7 +228,7 @@ pub fn run(
                                 current_group,
                             );
                         }
-                        send_prompt(&mut writer, item.text.as_bytes(), &settings.submit)?;
+                        send_prompt(&mut writer, item.text.as_bytes(), &settings.submit);
                         phase = AgentPhase::Busy;
                         busy_since = Instant::now();
                         last_activity = Instant::now();
@@ -237,7 +237,7 @@ pub fn run(
             }
             Event::UserLine(text) => {
                 if text.trim().is_empty() {
-                    send_prompt(&mut writer, b"", &settings.submit)?;
+                    send_prompt(&mut writer, b"", &settings.submit);
                     continue;
                 }
                 let ctx = Decision {
@@ -259,7 +259,7 @@ pub fn run(
                 match verdict {
                     Verdict::SendNow => {
                         current_group = group;
-                        send_prompt(&mut writer, text.as_bytes(), &settings.submit)?;
+                        send_prompt(&mut writer, text.as_bytes(), &settings.submit);
                         phase = AgentPhase::Busy;
                         busy_since = Instant::now();
                         last_activity = Instant::now();
@@ -267,14 +267,14 @@ pub fn run(
                     Verdict::Interrupt => {
                         notice!("interrupting agent for: {}", text);
                         if !settings.interrupt_bytes.is_empty() {
-                            writer.write_all(&settings.interrupt_bytes)?;
-                            writer.flush()?;
+                            let _ = writer.write_all(&settings.interrupt_bytes);
+                            let _ = writer.flush();
                             thread::sleep(Duration::from_millis(150));
                         }
                         // the interrupted partial reply belongs to the old prompt
                         flush_agent(&mut agent_buf, &memlog, current_group);
                         current_group = group;
-                        send_prompt(&mut writer, text.as_bytes(), &settings.submit)?;
+                        send_prompt(&mut writer, text.as_bytes(), &settings.submit);
                         phase = AgentPhase::Busy;
                         busy_since = Instant::now();
                         last_activity = Instant::now();
@@ -290,7 +290,7 @@ pub fn run(
                         // owns what follows.
                         flush_agent(&mut agent_buf, &memlog, current_group);
                         current_group = group;
-                        send_prompt(&mut writer, text.as_bytes(), &settings.submit)?;
+                        send_prompt(&mut writer, text.as_bytes(), &settings.submit);
                     }
                 }
             }
@@ -311,11 +311,14 @@ pub fn run(
     Ok(())
 }
 
-fn send_prompt(writer: &mut Box<dyn Write + Send>, body: &[u8], submit: &[u8]) -> Result<()> {
-    writer.write_all(body)?;
-    writer.write_all(submit)?;
-    writer.flush()?;
-    Ok(())
+/// Best-effort write to the agent. Once the agent process is gone (e.g. an
+/// interrupt terminated it) writes fail with EIO — that's a normal shutdown, not
+/// an error, and the reader thread reports `AgentExited` so we quit cleanly. So a
+/// failed write is deliberately ignored rather than propagated.
+fn send_prompt(writer: &mut Box<dyn Write + Send>, body: &[u8], submit: &[u8]) {
+    let _ = writer.write_all(body);
+    let _ = writer.write_all(submit);
+    let _ = writer.flush();
 }
 
 fn spawn_ticker(tx: Sender<Event>, period: Duration) {

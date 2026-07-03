@@ -14,7 +14,7 @@
 //! needed. Sleeps are generous; if a loaded CI still makes it flaky, re-add
 //! `#[ignore]`.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -124,4 +124,48 @@ fn queue_interrupt_release_end_to_end() {
     );
 
     let _ = std::fs::remove_file(&db);
+}
+
+/// Regression: an interrupt can terminate the wrapped agent (ctrl-c hits the PTY
+/// process group), and delphin's next write then fails with EIO. That must be a
+/// clean shutdown, not a propagated error. See supervisor `pty_write!`.
+#[test]
+fn interrupt_then_quit_exits_clean() {
+    let bin = env!("CARGO_BIN_EXE_delphin");
+    let mock = format!("{}/examples/mock-agent.sh", env!("CARGO_MANIFEST_DIR"));
+
+    let mut child = Command::new(bin)
+        .args(["--no-log", "--interrupt", "ctrl-c", "--", "bash", &mock])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn delphin");
+
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        thread::sleep(Duration::from_millis(600)); // boot
+        writeln!(stdin, "task one").unwrap(); // sent -> agent busy
+        stdin.flush().unwrap();
+        thread::sleep(Duration::from_millis(300));
+        writeln!(stdin, "stop now").unwrap(); // ctrl-c interrupt (may kill the mock)
+        stdin.flush().unwrap();
+        thread::sleep(Duration::from_millis(200));
+        // stdin dropped -> EOF; delphin must shut down without an I/O error
+    }
+
+    let status = child.wait().unwrap();
+    let mut err = String::new();
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut err)
+        .unwrap();
+
+    assert!(
+        !err.contains("error:"),
+        "delphin should exit cleanly after an interrupt, but printed:\n{err}"
+    );
+    assert!(status.success(), "delphin should exit 0, got {status}");
 }
