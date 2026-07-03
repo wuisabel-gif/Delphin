@@ -12,6 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-3da639)](#license)
 [![Sibling: MemoryWhale](https://img.shields.io/badge/sibling-MemoryWhale%20%F0%9F%90%8B-2b43dd)](https://github.com/wuisabel-gif/MemWhale)
 
+<img src="https://raw.githubusercontent.com/wuisabel-gif/Delphin/main/demo.gif" alt="Delphin demo: keep typing while the agent thinks — prompts queue, 'stop' barges in, every turn is remembered" width="760"/>
+
 </div>
 
 > 🐋 **Sibling project:** [MemoryWhale](https://github.com/wuisabel-gif/MemWhale) — the **memory** layer. Delphin handles *communication* (talk while the agent thinks); MemoryWhale handles *memory* (recall with explanations). They refer to each other — see [ECOSYSTEM.md](ECOSYSTEM.md). Point Delphin at MemoryWhale's database with `--db` to feed your conversations into it.
