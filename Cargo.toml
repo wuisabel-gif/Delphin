@@ -20,6 +20,7 @@ path = "src/main.rs"
 anyhow = "1"
 chrono = "0.4"
 dirs = "5"
+owo-colors = "4"
 portable-pty = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

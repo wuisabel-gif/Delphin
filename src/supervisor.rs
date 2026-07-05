@@ -13,6 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use owo_colors::OwoColorize;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 use crate::arbiter::{AgentPhase, Arbiter, Decision, Verdict};
@@ -339,13 +340,21 @@ fn resized(current: (u16, u16), queried: Option<(u16, u16)>) -> Option<(u16, u16
     }
 }
 
+const WORDMARK: &str = r#"██████╗ ███████╗██╗     ██████╗ ██╗  ██╗██╗███╗   ██╗
+██╔══██╗██╔════╝██║     ██╔══██╗██║  ██║██║████╗  ██║
+██║  ██║█████╗  ██║     ██████╔╝███████║██║██╔██╗ ██║
+██║  ██║██╔══╝  ██║     ██╔═══╝ ██╔══██║██║██║╚██╗██║
+██████╔╝███████╗███████╗██║     ██║  ██║██║██║ ╚████║
+╚═════╝ ╚══════╝╚══════╝╚═╝     ╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝"#;
+
 /// Print a startup banner so it's unmistakable delphin is active and wrapping
 /// the agent, not just the agent's own splash screen. Printed once, to stderr
 /// (like `notice!`), so it never pollutes the agent's real stdout stream.
 fn print_banner(settings: &Settings, arbiter: &dyn Arbiter, memlog: &Option<MemoryLog>) {
+    eprintln!("{}", WORDMARK.bright_blue());
+    eprintln!("\x1b[2m           keep talking while it thinks\x1b[0m");
+    eprintln!();
     let rule = "─".repeat(48);
-    eprintln!("\x1b[2m{rule}\x1b[0m");
-    eprintln!("\x1b[1;96m 🐬 delphin\x1b[0m\x1b[2m — keep talking while it thinks\x1b[0m");
     eprintln!("\x1b[2m{rule}\x1b[0m");
     eprintln!(
         "\x1b[2m  wrapping   \x1b[0m{}",
