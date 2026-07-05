@@ -253,6 +253,19 @@ delphin recall --db /path/to.sqlite3 --limit 50 "auth"
 Each line shows the date, session, direction, the arbiter's verdict, and the
 remembered text.
 
+## Replay — check a different policy against real history
+
+`delphin replay` re-runs any arbiter over your recorded conversations and
+reports where it would have decided differently — so you can check a new
+policy against real usage before it ever runs live:
+
+```bash
+delphin replay --arbiter question   # would the question arbiter interrupt more?
+delphin replay --session <id>        # restrict to one session
+```
+
+<img src="https://raw.githubusercontent.com/wuisabel-gif/Delphin/main/demo-replay.gif" alt="Delphin replay demo: a question queued under the heuristic arbiter is shown as an interrupt under the question arbiter" width="760"/>
+
 ## Use it as a Claude Code or Codex skill
 
 Delphin ships skills for both agents so you can recall, run, or set it up from
@@ -292,6 +305,7 @@ the wrapper. Plugin manifests live in [`.claude-plugin/`](.claude-plugin/).
 | `src/arbiter.rs` | `Arbiter` trait + default heuristic (+ tests) |
 | `src/queue.rs` | prompt FIFO (+ tests) |
 | `src/memory.rs` | self-contained SQLite log (+ tests) |
+| `src/replay.rs` | re-run an arbiter over recorded history (+ tests) |
 | `examples/mock-agent.sh` | fake thinking agent for testing |
 | `tests/` | end-to-end tests against the mock agent |
 
