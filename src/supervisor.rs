@@ -297,7 +297,21 @@ pub fn run(
                 break;
             }
             Event::AgentExited => {
-                notice!("agent exited");
+                // A flight recorder that silently stops when the agent crashes
+                // is a worse gap than the crash itself — record it, and name
+                // any prompts that were queued but never delivered.
+                let msg = if queue.is_empty() {
+                    "agent exited".to_string()
+                } else {
+                    format!(
+                        "agent exited ({} prompt(s) still queued, never sent)",
+                        queue.len()
+                    )
+                };
+                notice!("{msg}");
+                if let Some(ml) = &memlog {
+                    ml.system(&msg, current_group);
+                }
                 break;
             }
         }
