@@ -112,11 +112,19 @@ the user's control. Delphin doesn't replace an AI agent; it improves the
 communication layer around one, making long-running human–AI collaboration
 smoother, less interruptive, and more resilient.
 
+## Install
+
+```bash
+brew install wuisabel-gif/delphin/delphin   # Homebrew
+cargo install delphin                        # crates.io
+```
+
+Or from source: `git clone https://github.com/wuisabel-gif/Delphin && cd Delphin && cargo install --path .`
+
 ## Try it (no real model needed)
 
 ```bash
-cargo build
-cargo run -- --interrupt ctrl-c -- bash examples/mock-agent.sh
+delphin --interrupt ctrl-c -- bash examples/mock-agent.sh
 ```
 
 While the mock is "thinking" (printing dots):
@@ -127,8 +135,8 @@ For rich TUI agents that already accept type-ahead while generating, try live
 mode:
 
 ```bash
-cargo run --release -- --live --interrupt esc -- claude
-cargo run --release -- --live --interrupt esc -- codex
+delphin --live --interrupt esc -- claude
+delphin --live --interrupt esc -- codex
 ```
 
 `--live` streams ordinary busy prompts straight into the wrapped PTY instead of
@@ -139,8 +147,8 @@ while line-oriented programs usually just receive it on their next `read`.
 ## Use it with a real agent
 
 ```bash
-cargo run --release -- -- claude
-cargo run --release -- --interrupt esc -- codex
+delphin --agent claude -- claude    # esc-interrupt + live, tuned for Claude Code
+delphin --agent codex -- codex
 ```
 
 ## Memory
@@ -156,7 +164,7 @@ Point it at a different database to let Delphin *accompany* another system's
 memory (companionship by choice, not dependency):
 
 ```bash
-cargo run -- --db /path/to/other.sqlite3 -- claude
+delphin --db /path/to/other.sqlite3 -- claude
 ```
 
 Or turn memory off entirely with `--no-log`.
