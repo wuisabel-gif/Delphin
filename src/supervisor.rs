@@ -558,4 +558,50 @@ mod tests {
             "a ready marker should bypass --min-busy-ms, per its documented 'definitive' semantics"
         );
     }
+
+    // ---- multi-agent conformance: a silent (zero-output) worker ------------
+    //
+    // Real bytes captured from `examples/silent-agent.sh` — an agent shape
+    // meaningfully different from mock-agent.sh: it produces NO output at all
+    // while working (no dots, no streaming) and never prints a ready marker.
+    // Captured via: printf 'add a login endpoint\n' | bash examples/silent-agent.sh
+
+    // Ends with '\n' from startup, then nothing more arrives for the whole
+    // (simulated) work period below — the mid-line guard has nothing to see.
+    const SILENT_AGENT_BANNER: &[u8] = b"silent-agent ready.\n";
+
+    #[test]
+    fn silent_tool_call_releases_prematurely_without_a_min_busy_floor() {
+        // Honest, named limitation (roadmap 0.1: "tool-call pauses that look
+        // idle but aren't"): with no output at all during a silent work
+        // period, the mid-line guard can't help — the buffer's tail was
+        // already settled before the silence began. Default settings release
+        // at idle_after, even though the agent is still genuinely working.
+        let events = [
+            TranscriptEvent::Output(0, SILENT_AGENT_BANNER),
+            TranscriptEvent::Tick(850), // idle_after (800ms) elapsed; the real work runs ~3s
+        ];
+        assert_eq!(
+            first_idle_transition(&events, 800, 0, &[]),
+            Some(850),
+            "known gap: zero-output work is indistinguishable from idle without a min-busy floor"
+        );
+    }
+
+    #[test]
+    fn min_busy_floor_protects_a_silent_tool_call_when_tuned_to_it() {
+        // The existing mechanism (--min-busy-ms) does cover this, once a user
+        // tunes it to how long this particular agent's silent work actually
+        // takes — the fix a --agent preset for a known silent CLI would set.
+        let events = [
+            TranscriptEvent::Output(0, SILENT_AGENT_BANNER),
+            TranscriptEvent::Tick(850), // still within the known ~3s work window
+            TranscriptEvent::Tick(4010), // past a 4s floor tuned to this agent
+        ];
+        assert_eq!(
+            first_idle_transition(&events, 800, 4000, &[]),
+            Some(4010),
+            "--min-busy-ms, tuned to the agent, should hold off release until the real work is likely done"
+        );
+    }
 }
