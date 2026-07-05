@@ -8,6 +8,7 @@
 //! Usage:
 //!   delphin [options] -- <agent-command> [args...]
 //!   delphin recall [--db PATH] [--limit N] [query...]
+//!   delphin replay [--db PATH] [--session ID] [--arbiter KIND]
 //!
 //! Run `delphin --help` for the full option list.
 
@@ -15,6 +16,7 @@ mod arbiter;
 mod config;
 mod memory;
 mod queue;
+mod replay;
 mod supervisor;
 
 use std::path::PathBuf;
@@ -32,6 +34,7 @@ delphin — a duplex companion for AI agent CLIs
 USAGE:
     delphin [options] -- <agent-command> [args...]
     delphin recall [--db PATH] [--limit N] [query...]
+    delphin replay [--db PATH] [--session ID] [--arbiter KIND] [--interrupt-word W]...
 
 OPTIONS:
     --idle-ms N        silence (ms) before the agent is considered idle [800]
@@ -58,6 +61,7 @@ EXAMPLES:
     delphin -- claude
     delphin --arbiter question --interrupt ctrl-c -- bash examples/mock-agent.sh
     delphin recall postgres
+    delphin replay --arbiter question
 ";
 
 fn main() -> ExitCode {
@@ -80,6 +84,11 @@ fn real_main() -> anyhow::Result<()> {
     // Subcommand: query the conversation memory.
     if args.first().map(String::as_str) == Some("recall") {
         return run_recall(&args[1..]);
+    }
+
+    // Subcommand: replay history through an arbiter, compare vs what happened.
+    if args.first().map(String::as_str) == Some("replay") {
+        return run_replay(&args[1..]);
     }
 
     let (cfg, cfg_src) = Config::load();
@@ -244,6 +253,66 @@ fn run_recall(args: &[String]) -> anyhow::Result<()> {
             h.direction
         );
     }
+    Ok(())
+}
+
+/// `delphin replay [--db PATH] [--session ID] [--arbiter KIND] [--interrupt-word W]...`
+/// — re-run an arbiter over real history and report where it disagrees with
+/// what was actually decided at the time. See [`replay::replay`].
+fn run_replay(args: &[String]) -> anyhow::Result<()> {
+    let mut db: Option<PathBuf> = None;
+    let mut session: Option<String> = None;
+    let mut arbiter_name = "heuristic".to_string();
+    let mut interrupt_keywords: Vec<String> = arbiter::DEFAULT_INTERRUPT_KEYWORDS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut live = false;
+
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--db" => db = Some(PathBuf::from(next_val(it.next(), "--db")?)),
+            "--session" => session = Some(next_val(it.next(), "--session")?),
+            "--arbiter" => arbiter_name = next_val(it.next(), "--arbiter")?,
+            "--interrupt-word" => interrupt_keywords.push(next_val(it.next(), "--interrupt-word")?),
+            "--live" => live = true,
+            other => anyhow::bail!("unknown replay option `{other}`"),
+        }
+    }
+
+    let kind = ArbiterKind::parse(&arbiter_name).ok_or_else(|| {
+        anyhow::anyhow!("unknown --arbiter '{arbiter_name}' (use: heuristic | question)")
+    })?;
+    let arbiter = build_arbiter(kind, interrupt_keywords, live);
+
+    let turns = replay::replay(db, session.as_deref(), arbiter.as_ref())?;
+    if turns.is_empty() {
+        println!("(no user turns to replay yet — nothing logged, or the database doesn't exist)");
+        return Ok(());
+    }
+
+    let mut agree = 0usize;
+    for t in &turns {
+        if t.agrees() {
+            agree += 1;
+        } else {
+            let date = t.ts.split('T').next().unwrap_or(&t.ts);
+            // Short session tag: the trailing pid of "delphin-<ts>-<pid>".
+            let session = t.session_id.rsplit('-').next().unwrap_or(&t.session_id);
+            let text: String = t.text.replace('\n', " ").chars().take(70).collect();
+            println!(
+                "{date}  ({session})  recorded={:<9} replayed={:<9}  {text}",
+                t.recorded_verdict, t.replayed_verdict
+            );
+        }
+    }
+    println!(
+        "\n{agree}/{} turns agree with `{}` ({:.0}%)",
+        turns.len(),
+        arbiter.name(),
+        100.0 * agree as f64 / turns.len() as f64
+    );
     Ok(())
 }
 
