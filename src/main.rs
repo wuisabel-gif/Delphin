@@ -161,6 +161,10 @@ fn real_main() -> anyhow::Result<()> {
         );
     }
 
+    let (cols, rows) = terminal_size::terminal_size()
+        .map(|(w, h)| (w.0, h.0))
+        .unwrap_or((120, 40)); // not a real terminal (e.g. piped) -> a sane fallback
+
     let settings = Settings {
         agent_command: agent_cmd,
         idle_after_ms: idle_ms,
@@ -174,8 +178,8 @@ fn real_main() -> anyhow::Result<()> {
         interrupt_bytes: interrupt_bytes(&interrupt),
         interrupt_label: interrupt,
         ready_markers,
-        rows: 40,
-        cols: 120,
+        rows,
+        cols,
     };
 
     let arbiter = build_arbiter(arbiter_kind, interrupt_keywords, live);

@@ -96,7 +96,7 @@ pub fn run(
         .context("cloning pty reader")?;
     let mut writer = pair.master.take_writer().context("taking pty writer")?;
     drop(pair.slave);
-    let _master = pair.master;
+    let master = pair.master; // kept alive for the PTY's lifetime; also used to propagate resizes
 
     let (tx, rx) = mpsc::channel::<Event>();
 
@@ -161,6 +161,7 @@ pub fn run(
     let mut force_idle = false; // set when a ready-marker is seen in the output
     let mut next_group: u64 = 0; // monotonic id minted per user prompt
     let mut current_group: u64 = 0; // group the agent's current output belongs to (0 = boot)
+    let mut term_size = (settings.cols, settings.rows); // polled on each Tick to catch a resize
 
     let flush_agent = |buf: &mut Vec<u8>, memlog: &Option<MemoryLog>, group: u64| {
         if buf.is_empty() {
@@ -205,6 +206,21 @@ pub fn run(
                 }
             }
             Event::Tick => {
+                // Cheap poll for a terminal resize (piggybacking on the existing
+                // tick rather than a signal handler) and propagate it to the
+                // child, so a rich TUI agent redraws at the real size instead
+                // of whatever size delphin happened to start at.
+                let queried = terminal_size::terminal_size().map(|(w, h)| (w.0, h.0));
+                if let Some(new_size) = resized(term_size, queried) {
+                    term_size = new_size;
+                    let _ = master.resize(PtySize {
+                        rows: term_size.1,
+                        cols: term_size.0,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    });
+                }
+
                 let idle_now = is_idle_now(
                     force_idle,
                     last_activity.elapsed(),
@@ -323,6 +339,17 @@ pub fn run(
     Ok(())
 }
 
+/// Returns the newly-queried terminal size if it differs from `current`, or
+/// `None` if it's unchanged or unavailable (e.g. stdout isn't a real tty).
+/// Pulled out as a pure function so "did it actually change" is testable
+/// without a real terminal.
+fn resized(current: (u16, u16), queried: Option<(u16, u16)>) -> Option<(u16, u16)> {
+    match queried {
+        Some(new) if new != current => Some(new),
+        _ => None,
+    }
+}
+
 /// Best-effort write to the agent. Once the agent process is gone (e.g. an
 /// interrupt terminated it) writes fail with EIO — that's a normal shutdown, not
 /// an error, and the reader thread reports `AgentExited` so we quit cleanly. So a
@@ -393,7 +420,26 @@ fn ends_line(buf: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{ends_line, is_idle_now, tail_is_ready, MIDLINE_GRACE};
+    use super::{ends_line, is_idle_now, resized, tail_is_ready, MIDLINE_GRACE};
+
+    #[test]
+    fn resize_only_propagates_on_a_real_change() {
+        assert_eq!(
+            resized((80, 24), Some((80, 24))),
+            None,
+            "unchanged size -> no resize"
+        );
+        assert_eq!(
+            resized((80, 24), Some((100, 30))),
+            Some((100, 30)),
+            "a real change should be reported"
+        );
+        assert_eq!(
+            resized((80, 24), None),
+            None,
+            "not a real terminal (no size available) -> no-op, keep the fallback"
+        );
+    }
 
     #[test]
     fn ends_line_detects_mid_line_output() {
