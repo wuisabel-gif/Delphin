@@ -176,18 +176,7 @@ pub fn run(
         buf.clear();
     };
 
-    notice!(
-        "orbiting `{}` | arbiter={} | idle>{}ms | interrupt={} | memory={}",
-        settings.agent_command.join(" "),
-        arbiter.name(),
-        settings.idle_after_ms,
-        settings.interrupt_label,
-        match &memlog {
-            Some(ml) => format!("on ({})", ml.db_path().display()),
-            None => "off".to_string(),
-        }
-    );
-    notice!("type normally; busy prompts may queue or stream depending on the arbiter. Say 'stop'/'wait' to barge in. Ctrl-D to quit.");
+    print_banner(settings, arbiter.as_ref(), &memlog);
 
     while let Ok(ev) = rx.recv() {
         match ev {
@@ -348,6 +337,32 @@ fn resized(current: (u16, u16), queried: Option<(u16, u16)>) -> Option<(u16, u16
         Some(new) if new != current => Some(new),
         _ => None,
     }
+}
+
+/// Print a startup banner so it's unmistakable delphin is active and wrapping
+/// the agent, not just the agent's own splash screen. Printed once, to stderr
+/// (like `notice!`), so it never pollutes the agent's real stdout stream.
+fn print_banner(settings: &Settings, arbiter: &dyn Arbiter, memlog: &Option<MemoryLog>) {
+    let rule = "─".repeat(48);
+    eprintln!("\x1b[2m{rule}\x1b[0m");
+    eprintln!("\x1b[1;96m 🐬 delphin\x1b[0m\x1b[2m — keep talking while it thinks\x1b[0m");
+    eprintln!("\x1b[2m{rule}\x1b[0m");
+    eprintln!(
+        "\x1b[2m  wrapping   \x1b[0m{}",
+        settings.agent_command.join(" ")
+    );
+    eprintln!("\x1b[2m  arbiter    \x1b[0m{}", arbiter.name());
+    eprintln!("\x1b[2m  interrupt  \x1b[0m{}", settings.interrupt_label);
+    eprintln!("\x1b[2m  idle       \x1b[0m>{}ms", settings.idle_after_ms);
+    eprintln!(
+        "\x1b[2m  memory     \x1b[0m{}",
+        match memlog {
+            Some(ml) => format!("on  ({})", ml.db_path().display()),
+            None => "off".to_string(),
+        }
+    );
+    eprintln!();
+    notice!("type normally; busy prompts may queue or stream depending on the arbiter. Say 'stop'/'wait' to barge in. Ctrl-D to quit.");
 }
 
 /// Best-effort write to the agent. Once the agent process is gone (e.g. an
