@@ -205,16 +205,14 @@ pub fn run(
                 }
             }
             Event::Tick => {
-                // A ready marker is definitive; otherwise require silence, plus the
-                // min-busy floor, plus a settled (not mid-line) tail.
-                let idle_now = force_idle || {
-                    let quiet = last_activity.elapsed() >= idle_after;
-                    let past_floor =
-                        busy_since.elapsed() >= Duration::from_millis(settings.min_busy_ms);
-                    let settled = ends_line(&agent_buf)
-                        || last_activity.elapsed() >= idle_after * MIDLINE_GRACE;
-                    quiet && past_floor && settled
-                };
+                let idle_now = is_idle_now(
+                    force_idle,
+                    last_activity.elapsed(),
+                    busy_since.elapsed(),
+                    idle_after,
+                    Duration::from_millis(settings.min_busy_ms),
+                    &agent_buf,
+                );
                 if phase == AgentPhase::Busy && idle_now {
                     force_idle = false;
                     phase = AgentPhase::Idle;
@@ -330,6 +328,27 @@ fn spawn_ticker(tx: Sender<Event>, period: Duration) {
     });
 }
 
+/// Is the agent idle right now? A ready marker (`force_idle`) is definitive;
+/// otherwise idle requires silence, past the min-busy floor, with a settled
+/// (not mid-line) tail. Takes elapsed durations rather than `Instant`s so it's
+/// a pure function — deterministically testable without real sleeping, and the
+/// one place golden-transcript tests replay against.
+fn is_idle_now(
+    force_idle: bool,
+    last_activity_elapsed: Duration,
+    busy_since_elapsed: Duration,
+    idle_after: Duration,
+    min_busy: Duration,
+    agent_buf: &[u8],
+) -> bool {
+    force_idle || {
+        let quiet = last_activity_elapsed >= idle_after;
+        let past_floor = busy_since_elapsed >= min_busy;
+        let settled = ends_line(agent_buf) || last_activity_elapsed >= idle_after * MIDLINE_GRACE;
+        quiet && past_floor && settled
+    }
+}
+
 /// True if the (ANSI-stripped) tail of the agent's output ends with one of the
 /// configured ready markers — i.e. the agent is showing a prompt and waiting.
 fn tail_is_ready(buf: &[u8], markers: &[String]) -> bool {
@@ -360,7 +379,7 @@ fn ends_line(buf: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{ends_line, tail_is_ready};
+    use super::{ends_line, is_idle_now, tail_is_ready, MIDLINE_GRACE};
 
     #[test]
     fn ends_line_detects_mid_line_output() {
@@ -390,5 +409,153 @@ mod tests {
         ));
         // no markers configured -> never ready (pure silence detection)
         assert!(!tail_is_ready(b"you> ", &[]));
+    }
+
+    // ---- golden-transcript regression tests -------------------------------
+    //
+    // Replay real captured agent output through `is_idle_now` using virtual
+    // millisecond time instead of real sleeping. Unlike tests/e2e.rs (a real
+    // PTY on real wall-clock time), these run in microseconds and can't flake,
+    // so the idle-detection logic can be refactored with confidence. The
+    // bytes below are exactly what `examples/mock-agent.sh` printed for a real
+    // turn, captured via:
+    //   printf 'add a login endpoint\n' | bash examples/mock-agent.sh
+
+    enum TranscriptEvent {
+        /// Agent output arrives at this virtual ms.
+        Output(u64, &'static [u8]),
+        /// An idle-detector tick fires at this virtual ms.
+        Tick(u64),
+    }
+
+    /// Replay `events` (non-decreasing `at_ms`) against `is_idle_now`, Busy
+    /// from t=0. Returns the virtual ms of the first Busy->Idle transition, or
+    /// `None` if it never goes idle.
+    fn first_idle_transition(
+        events: &[TranscriptEvent],
+        idle_after_ms: u64,
+        min_busy_ms: u64,
+        ready_markers: &[String],
+    ) -> Option<u64> {
+        let idle_after = std::time::Duration::from_millis(idle_after_ms);
+        let min_busy = std::time::Duration::from_millis(min_busy_ms);
+        let mut agent_buf: Vec<u8> = Vec::new();
+        let mut last_activity_ms: u64 = 0;
+        let mut force_idle = false;
+
+        for ev in events {
+            match *ev {
+                TranscriptEvent::Output(at_ms, bytes) => {
+                    agent_buf.extend_from_slice(bytes);
+                    last_activity_ms = at_ms;
+                    if tail_is_ready(&agent_buf, ready_markers) {
+                        force_idle = true;
+                    }
+                }
+                TranscriptEvent::Tick(at_ms) => {
+                    let last_activity_elapsed =
+                        std::time::Duration::from_millis(at_ms.saturating_sub(last_activity_ms));
+                    // busy_since = 0 in every fixture here (a single turn).
+                    let busy_since_elapsed = std::time::Duration::from_millis(at_ms);
+                    if is_idle_now(
+                        force_idle,
+                        last_activity_elapsed,
+                        busy_since_elapsed,
+                        idle_after,
+                        min_busy,
+                        &agent_buf,
+                    ) {
+                        return Some(at_ms);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    const BANNER: &[u8] = b"mock-agent ready. ask me anything.\nyou> ";
+    // No trailing newline -> the agent is still drawing.
+    const THINKING_MIDLINE: &[u8] = b"thinking about: add a login endpoint .....";
+    // Ends with a newline -> settled, but no ready marker in this chunk.
+    const ANSWER_SETTLED: &[u8] =
+        b"\nanswer: I considered \"add a login endpoint\" and here is a verbatim-ish reply.\n";
+
+    #[test]
+    fn ready_marker_goes_idle_on_the_next_tick() {
+        let events = [
+            TranscriptEvent::Output(0, BANNER),
+            TranscriptEvent::Tick(10),
+        ];
+        let markers = vec!["you> ".to_string()];
+        assert_eq!(
+            first_idle_transition(&events, 800, 0, &markers),
+            Some(10),
+            "a ready marker must flip idle on the next tick, not wait out the silence timer"
+        );
+    }
+
+    #[test]
+    fn mid_line_output_defers_idle_past_the_silence_window() {
+        let events = [
+            TranscriptEvent::Output(0, THINKING_MIDLINE),
+            TranscriptEvent::Tick(850), // idle_after (800ms) elapsed, but tail is mid-line
+        ];
+        assert_eq!(
+            first_idle_transition(&events, 800, 0, &[]),
+            None,
+            "mid-line output must not release on the first silence tick"
+        );
+    }
+
+    #[test]
+    fn mid_line_output_eventually_releases_via_the_bounded_grace_window() {
+        let events = [
+            TranscriptEvent::Output(0, THINKING_MIDLINE),
+            TranscriptEvent::Tick(800 * (MIDLINE_GRACE as u64) + 10),
+        ];
+        assert!(
+            first_idle_transition(&events, 800, 0, &[]).is_some(),
+            "the mid-line guard must be bounded, or a newline-less agent wedges the queue forever"
+        );
+    }
+
+    #[test]
+    fn min_busy_floor_holds_off_release_even_once_output_settles() {
+        let events = [
+            TranscriptEvent::Output(0, ANSWER_SETTLED),
+            TranscriptEvent::Tick(850), // idle_after elapsed & tail settled -> would release without the floor
+        ];
+        assert_eq!(
+            first_idle_transition(&events, 800, 1000, &[]),
+            None,
+            "min-busy-ms must hold off release even once idle_after elapses and the tail is settled"
+        );
+    }
+
+    #[test]
+    fn min_busy_floor_releases_once_the_floor_elapses() {
+        let events = [
+            TranscriptEvent::Output(0, ANSWER_SETTLED),
+            TranscriptEvent::Tick(850),  // before the floor
+            TranscriptEvent::Tick(1010), // past the floor
+        ];
+        assert_eq!(first_idle_transition(&events, 800, 1000, &[]), Some(1010));
+    }
+
+    #[test]
+    fn ready_marker_is_definitive_even_before_the_min_busy_floor() {
+        // Documented behavior: a ready marker means "the agent is waiting for
+        // input," a hard signal, so it bypasses --min-busy-ms entirely — even
+        // a multi-second floor won't hold off release once it's seen.
+        let events = [
+            TranscriptEvent::Output(0, BANNER),
+            TranscriptEvent::Tick(10),
+        ];
+        let markers = vec!["you> ".to_string()];
+        assert_eq!(
+            first_idle_transition(&events, 800, 5000, &markers),
+            Some(10),
+            "a ready marker should bypass --min-busy-ms, per its documented 'definitive' semantics"
+        );
     }
 }
