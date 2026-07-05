@@ -15,12 +15,16 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-#[test]
-fn queued_prompt_survives_an_unexpected_agent_exit() {
+/// Wraps `agent_script` (which must print a "you> " ready marker, read one
+/// line, then disappear one way or another), sends one prompt through and a
+/// second that stays queued, and asserts delphin exits cleanly with the
+/// crash — and the dropped prompt — recorded in memory. Shared by the exit(1)
+/// and SIGKILL scenarios below; only how the agent disappears differs.
+fn assert_survives_unexpected_exit(agent_script: &str, db_tag: &str) {
     let bin = env!("CARGO_BIN_EXE_delphin");
-    let agent = format!("{}/examples/crashy-agent.sh", env!("CARGO_MANIFEST_DIR"));
+    let agent = format!("{}/examples/{agent_script}", env!("CARGO_MANIFEST_DIR"));
     let db = std::env::temp_dir().join(format!(
-        "delphin-crash-conformance-{}.sqlite3",
+        "delphin-{db_tag}-conformance-{}.sqlite3",
         std::process::id()
     ));
     let _ = std::fs::remove_file(&db);
@@ -56,9 +60,9 @@ fn queued_prompt_survives_an_unexpected_agent_exit() {
         thread::sleep(Duration::from_millis(200));
         writeln!(stdin, "also add tests").unwrap(); // busy -> enqueue, never released
         stdin.flush().unwrap();
-        // crashy-agent.sh processes "first task" then exits ~0.3s later; wait
-        // for that real crash before dropping stdin ourselves, or dropping
-        // stdin here would send our own EOF and hide the AgentExited path.
+        // The agent processes "first task" then disappears ~0.2-0.3s later;
+        // wait for that real exit before dropping stdin ourselves, or
+        // dropping stdin here would send our own EOF and hide the crash path.
         thread::sleep(Duration::from_millis(1000));
     }
 
@@ -70,7 +74,7 @@ fn queued_prompt_survives_an_unexpected_agent_exit() {
         }
         assert!(
             start.elapsed() < Duration::from_secs(10),
-            "delphin did not exit after the wrapped agent crashed"
+            "delphin did not exit after the wrapped agent disappeared"
         );
         thread::sleep(Duration::from_millis(50));
     };
@@ -105,4 +109,20 @@ fn queued_prompt_survives_an_unexpected_agent_exit() {
     );
 
     let _ = std::fs::remove_file(&db);
+}
+
+#[test]
+fn queued_prompt_survives_a_graceful_agent_exit() {
+    assert_survives_unexpected_exit("crashy-agent.sh", "crash");
+}
+
+#[test]
+fn queued_prompt_survives_an_abrupt_sigkill() {
+    // "Link loss" (roadmap 0.4): the PTY reader's Ok(0) | Err(_) branches are
+    // already merged into one AgentExited path, which is the right call
+    // cross-platform (Linux PTYs often surface EIO, not a clean EOF, once
+    // every slave fd is closed) — but that was never proven against an
+    // abrupt SIGKILL specifically, only a graceful `exit 1`. This is that
+    // proof: the wrapped process vanishes with no shutdown of its own at all.
+    assert_survives_unexpected_exit("self-kill-agent.sh", "selfkill");
 }
