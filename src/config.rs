@@ -27,6 +27,8 @@ pub struct Config {
     pub submit_newline: bool,
     pub arbiter: String,
     pub live: bool,
+    /// Forward stdin byte-for-byte instead of routing completed lines.
+    pub passthrough: bool,
     /// Substrings that, when the agent's output ends with one, mean it's waiting
     /// for input (idle) — flips out of "busy" immediately instead of waiting for
     /// the silence timer.
@@ -45,6 +47,7 @@ impl Default for Config {
             submit_newline: false,
             arbiter: "heuristic".into(),
             live: false,
+            passthrough: false,
             ready_markers: Vec::new(),
             interrupt_keywords: DEFAULT_INTERRUPT_KEYWORDS
                 .iter()

@@ -48,6 +48,9 @@ pub struct Settings {
     /// one, mean it's waiting for input — flip to idle immediately instead of
     /// waiting out the silence timer. Empty = pure silence detection.
     pub ready_markers: Vec<String>,
+    /// Forward stdin bytes without line buffering or arbitration. This preserves
+    /// interactive TUI controls at the cost of Delphin's prompt queue.
+    pub passthrough: bool,
     pub rows: u16,
     pub cols: u16,
 }
@@ -56,6 +59,7 @@ enum Event {
     AgentOutput(Vec<u8>),
     AgentExited,
     UserLine(String),
+    UserBytes(Vec<u8>),
     UserEof,
     Tick,
 }
@@ -107,6 +111,7 @@ pub fn run(
     let master = pair.master; // kept alive for the PTY's lifetime; also used to propagate resizes
 
     let (tx, rx) = mpsc::channel::<Event>();
+    let _terminal_mode = RawStdinGuard::enable(settings.passthrough)?;
 
     // PTY reader: mirror output to our stdout, forward bytes for memory/idle.
     {
@@ -130,13 +135,32 @@ pub fn run(
         });
     }
 
-    // stdin reader: one event per line.
+    // stdin reader: completed lines for prompt routing, raw chunks for passthrough.
     {
         let tx = tx.clone();
+        let passthrough = settings.passthrough;
         thread::spawn(move || {
-            use std::io::BufRead;
             let stdin = std::io::stdin();
             let mut handle = stdin.lock();
+            if passthrough {
+                let mut buf = [0u8; 8192];
+                loop {
+                    match handle.read(&mut buf) {
+                        Ok(0) | Err(_) => {
+                            let _ = tx.send(Event::UserEof);
+                            break;
+                        }
+                        Ok(n) => {
+                            if tx.send(Event::UserBytes(buf[..n].to_vec())).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+
+            use std::io::BufRead;
             let mut line = String::new();
             loop {
                 line.clear();
@@ -294,6 +318,10 @@ pub fn run(
                     }
                 }
             }
+            Event::UserBytes(bytes) => {
+                let _ = writer.write_all(&bytes);
+                let _ = writer.flush();
+            }
             Event::UserEof => {
                 notice!("stdin closed, shutting down agent");
                 break;
@@ -405,6 +433,14 @@ fn print_banner(settings: &Settings, arbiter: &dyn Arbiter, memlog: &Option<Memo
         settings.agent_command.join(" ")
     );
     eprintln!("\x1b[2m  arbiter    \x1b[0m{}", arbiter.name());
+    eprintln!(
+        "\x1b[2m  input      \x1b[0m{}",
+        if settings.passthrough {
+            "raw passthrough"
+        } else {
+            "prompt routing"
+        }
+    );
     eprintln!("\x1b[2m  interrupt  \x1b[0m{}", settings.interrupt_label);
     eprintln!("\x1b[2m  idle       \x1b[0m>{}ms", settings.idle_after_ms);
     eprintln!(
@@ -415,7 +451,65 @@ fn print_banner(settings: &Settings, arbiter: &dyn Arbiter, memlog: &Option<Memo
         }
     );
     eprintln!();
-    notice!("type normally; busy prompts may queue or stream depending on the arbiter. Say 'stop'/'wait' to barge in. Ctrl-D to quit.");
+    if settings.passthrough {
+        notice!("raw passthrough is active; queueing and prompt arbitration are disabled");
+    } else {
+        notice!("type normally; busy prompts may queue or stream depending on the arbiter. Say 'stop'/'wait' to barge in. Ctrl-D to quit.");
+    }
+}
+
+#[cfg(unix)]
+struct RawStdinGuard {
+    original: Option<termios::Termios>,
+}
+
+#[cfg(unix)]
+impl RawStdinGuard {
+    fn enable(enabled: bool) -> Result<Self> {
+        use std::os::fd::AsRawFd;
+
+        if !enabled {
+            return Ok(Self { original: None });
+        }
+        let fd = std::io::stdin().as_raw_fd();
+        let original = match termios::Termios::from_fd(fd) {
+            Ok(value) => value,
+            // Piped input has no terminal attributes but still supports byte
+            // passthrough, which is useful for scripts and conformance tests.
+            Err(_) => return Ok(Self { original: None }),
+        };
+        let mut raw = original;
+        termios::cfmakeraw(&mut raw);
+        termios::tcsetattr(fd, termios::TCSANOW, &raw).context("enabling raw terminal input")?;
+        Ok(Self {
+            original: Some(original),
+        })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for RawStdinGuard {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+
+        if let Some(original) = &self.original {
+            let fd = std::io::stdin().as_raw_fd();
+            let _ = termios::tcsetattr(fd, termios::TCSANOW, original);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+struct RawStdinGuard;
+
+#[cfg(not(unix))]
+impl RawStdinGuard {
+    fn enable(enabled: bool) -> Result<Self> {
+        if enabled {
+            anyhow::bail!("--passthrough raw terminal mode is currently supported on Unix only");
+        }
+        Ok(Self)
+    }
 }
 
 /// Best-effort write to the agent. Once the agent process is gone (e.g. an
