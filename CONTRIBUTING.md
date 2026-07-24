@@ -30,6 +30,22 @@ cargo test --all                # tests
 
 `cargo fmt` (without `--check`) auto-formats.
 
+## Releasing
+
+Release preparation and publication are separate steps:
+
+1. Move the pending changelog section from `Unreleased` to the release date.
+2. Confirm the `Cargo.toml` version matches the changelog.
+3. Run the full checks above and `cargo package`.
+4. Merge the release preparation PR.
+5. Create and push the matching signed tag.
+6. Publish the crate with `cargo publish`.
+7. Update and verify the Homebrew formula against the published archive.
+8. Create the GitHub release from the changelog entry.
+
+Do not advertise a version through the default install commands until both the
+crate and Homebrew artifacts are available.
+
 ## Project layout
 
 | File | Role |
