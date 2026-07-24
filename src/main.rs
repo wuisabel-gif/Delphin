@@ -76,7 +76,7 @@ fn main() -> ExitCode {
 
 fn real_main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    if help_requested(&args) {
         print!("{HELP}");
         return Ok(());
     }
@@ -348,6 +348,13 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
         .and_then(|i| args.get(i + 1).cloned())
 }
 
+/// Delphin owns help flags only before the command delimiter. Everything after
+/// `--` belongs to the wrapped command and must be forwarded unchanged.
+fn help_requested(args: &[String]) -> bool {
+    let ours_end = args.iter().position(|a| a == "--").unwrap_or(args.len());
+    args[..ours_end].iter().any(|a| a == "-h" || a == "--help")
+}
+
 /// Convenience baseline per wrapped agent: (interrupt key, live mode). These are
 /// starting points, not gospel — any explicit flag overrides them.
 // ponytail: two knobs that actually differ between agents (interrupt key and
@@ -364,7 +371,7 @@ fn agent_preset(name: &str) -> Option<(&'static str, bool)> {
 
 #[cfg(test)]
 mod tests {
-    use super::agent_preset;
+    use super::{agent_preset, help_requested};
 
     #[test]
     fn agent_presets() {
@@ -372,5 +379,14 @@ mod tests {
         assert_eq!(agent_preset("CODEX"), Some(("esc", true))); // case-insensitive
         assert_eq!(agent_preset("generic"), Some(("ctrl-c", false)));
         assert_eq!(agent_preset("nope"), None);
+    }
+
+    #[test]
+    fn help_flags_after_delimiter_belong_to_wrapped_command() {
+        let args = vec!["--".into(), "tool".into(), "--help".into()];
+        assert!(!help_requested(&args));
+
+        let args = vec!["--help".into(), "--".into(), "tool".into()];
+        assert!(help_requested(&args));
     }
 }
