@@ -29,6 +29,10 @@ const MIDLINE_GRACE: u32 = 3;
 /// A process that exits immediately after Delphin sends its configured
 /// interrupt was deliberately stopped by the user, not an independent crash.
 const INTERRUPT_EXIT_GRACE: Duration = Duration::from_secs(2);
+/// Flush long-running output in chunks instead of retaining an unbounded reply
+/// in memory. The remaining tail is enough for ready and line-end detection.
+const AGENT_BUFFER_LIMIT: usize = 1024 * 1024;
+const AGENT_BUFFER_TAIL: usize = 256;
 
 pub struct Settings {
     pub agent_command: Vec<String>,
@@ -169,19 +173,6 @@ pub fn run(
     let mut child_exit_code: Option<u8> = None;
     let mut interrupt_sent_at: Option<Instant> = None;
 
-    let flush_agent = |buf: &mut Vec<u8>, memlog: &Option<MemoryLog>, group: u64| {
-        if buf.is_empty() {
-            return;
-        }
-        if let Some(ml) = memlog {
-            let text = String::from_utf8_lossy(buf);
-            if !text.trim().is_empty() {
-                ml.agent(&text, group);
-            }
-        }
-        buf.clear();
-    };
-
     print_banner(settings, arbiter.as_ref(), &memlog);
 
     while let Ok(ev) = rx.recv() {
@@ -193,6 +184,7 @@ pub fn run(
                 phase = AgentPhase::Busy;
                 last_activity = Instant::now();
                 agent_buf.extend_from_slice(&bytes);
+                bound_agent_buffer(&mut agent_buf, &memlog, current_group);
                 // Smarter idle: if the output now ends with a "ready" prompt, the
                 // agent is waiting for us — go idle on the next tick instead of
                 // waiting out the full silence window.
@@ -343,6 +335,44 @@ pub fn run(
     Ok(child_exit_code.unwrap_or(0))
 }
 
+fn flush_agent(buf: &mut Vec<u8>, memlog: &Option<MemoryLog>, group: u64) {
+    flush_agent_prefix(buf, buf.len(), memlog, group);
+}
+
+/// Keep only the output tail needed by the idle detector. When memory logging is
+/// enabled, the flushed prefix is persisted as another chunk in the same turn
+/// group; otherwise it is simply discarded after already being mirrored.
+fn bound_agent_buffer(buf: &mut Vec<u8>, memlog: &Option<MemoryLog>, group: u64) {
+    if buf.len() <= AGENT_BUFFER_LIMIT {
+        return;
+    }
+    let preferred = buf.len().saturating_sub(AGENT_BUFFER_TAIL);
+    let split_at = utf8_boundary_at_or_before(buf, preferred);
+    flush_agent_prefix(buf, split_at, memlog, group);
+}
+
+fn flush_agent_prefix(buf: &mut Vec<u8>, split_at: usize, memlog: &Option<MemoryLog>, group: u64) {
+    if split_at == 0 {
+        return;
+    }
+    if let Some(ml) = memlog {
+        let text = String::from_utf8_lossy(&buf[..split_at]);
+        if !text.trim().is_empty() {
+            ml.agent(&text, group);
+        }
+    }
+    buf.drain(..split_at);
+}
+
+/// Avoid splitting a valid UTF-8 scalar between separately logged chunks.
+fn utf8_boundary_at_or_before(buf: &[u8], preferred: usize) -> usize {
+    let mut split = preferred.min(buf.len());
+    while split > 0 && split < buf.len() && (buf[split] & 0b1100_0000) == 0b1000_0000 {
+        split -= 1;
+    }
+    split
+}
+
 /// Returns the newly-queried terminal size if it differs from `current`, or
 /// `None` if it's unchanged or unavailable (e.g. stdout isn't a real tty).
 /// Pulled out as a pure function so "did it actually change" is testable
@@ -458,7 +488,10 @@ fn ends_line(buf: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{ends_line, is_idle_now, resized, tail_is_ready, MIDLINE_GRACE};
+    use super::{
+        bound_agent_buffer, ends_line, is_idle_now, resized, tail_is_ready, AGENT_BUFFER_LIMIT,
+        AGENT_BUFFER_TAIL, MIDLINE_GRACE,
+    };
 
     #[test]
     fn resize_only_propagates_on_a_real_change() {
@@ -477,6 +510,17 @@ mod tests {
             None,
             "not a real terminal (no size available) -> no-op, keep the fallback"
         );
+    }
+
+    #[test]
+    fn continuous_output_keeps_only_a_bounded_detection_tail() {
+        let mut output = vec![b'x'; AGENT_BUFFER_LIMIT * 2];
+        let expected_tail = output[output.len() - AGENT_BUFFER_TAIL..].to_vec();
+
+        bound_agent_buffer(&mut output, &None, 0);
+
+        assert_eq!(output, expected_tail);
+        assert!(output.len() <= AGENT_BUFFER_LIMIT);
     }
 
     #[test]
