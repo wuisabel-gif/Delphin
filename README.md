@@ -121,6 +121,12 @@ cargo install delphin                        # crates.io
 
 Or from source: `git clone https://github.com/wuisabel-gif/Delphin && cd Delphin && cargo install --path .`
 
+### Supported platforms
+
+Delphin is continuously tested on current Linux and macOS runners. Its
+conformance suite exercises Unix PTYs and shell-based fixtures on both systems.
+Windows is not currently part of the supported or tested platform matrix.
+
 ## Try it (no real model needed)
 
 ```bash
