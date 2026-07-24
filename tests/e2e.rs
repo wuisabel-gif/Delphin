@@ -59,7 +59,10 @@ fn queue_interrupt_release_end_to_end() {
         stdin.flush().unwrap();
         // Let the first prompt finish on its own (~4s think) so the queue drains
         // deterministically — the release assertion doesn't hang on interrupt timing.
-        thread::sleep(Duration::from_millis(4800));
+        // The mock thinks for ~4s. Keep additional headroom for loaded macOS
+        // runners so the ready marker is observed and the queue drains before
+        // the interrupt prompt is sent.
+        thread::sleep(Duration::from_millis(6500));
         writeln!(stdin, "stop wrong thing").unwrap(); // agent busy on #1 -> interrupt
         stdin.flush().unwrap();
         thread::sleep(Duration::from_millis(1500));

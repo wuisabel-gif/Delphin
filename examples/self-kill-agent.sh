@@ -8,5 +8,7 @@ echo "self-kill-agent ready."
 printf 'you> '
 read -r line
 echo "processing: $line"
-sleep 0.2
+# Leave enough time for the conformance test to enqueue a second prompt even
+# on a loaded runner before simulating the abrupt link loss.
+sleep 0.8
 kill -9 $$
