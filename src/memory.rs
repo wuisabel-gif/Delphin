@@ -61,6 +61,7 @@ impl MemoryLog {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating data dir {}", parent.display()))?;
         }
+        create_private_db_file(&db_path)?;
         let conn = Connection::open(&db_path)
             .with_context(|| format!("opening database {}", db_path.display()))?;
         conn.execute_batch(
@@ -174,6 +175,31 @@ fn validate_agent_turns_schema(conn: &Connection) -> anyhow::Result<()> {
             missing.join(", ")
         );
     }
+    Ok(())
+}
+
+/// Pre-create a new database with owner-only permissions on Unix. Existing
+/// databases are left untouched because `--db` may point at a shared database
+/// whose access policy Delphin does not own.
+#[cfg(unix)]
+fn create_private_db_file(path: &std::path::Path) -> anyhow::Result<()> {
+    use std::fs::OpenOptions;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+    {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e).with_context(|| format!("creating database {}", path.display())),
+    }
+}
+
+#[cfg(not(unix))]
+fn create_private_db_file(_path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
@@ -426,6 +452,23 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("incompatible agent_turns schema"));
         assert!(message.contains("session_id"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn newly_created_database_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("delphin-permissions-{}", std::process::id()));
+        let db = dir.join("delphin.sqlite3");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let ml = MemoryLog::open("s1", None, Some(db.clone())).unwrap();
+        drop(ml);
+
+        let mode = std::fs::metadata(&db).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

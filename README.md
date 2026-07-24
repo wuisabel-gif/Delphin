@@ -175,6 +175,24 @@ delphin --db /path/to/other.sqlite3 -- claude
 
 Or turn memory off entirely with `--no-log`.
 
+### Privacy and retention
+
+Memory includes complete prompts, arbiter decisions, supervisor events, and
+terminal output. That can include source code, file paths, credentials printed by
+a command, or secrets pasted into a prompt. Delphin does not upload this data,
+redact it, or delete it automatically.
+
+- Use `--no-log` for sensitive sessions.
+- Newly created database files use owner-only permissions on Unix (`0600`).
+- Existing databases passed through `--db` keep their current permissions.
+- Backups and filesystem snapshots may retain copies after the live database is
+  removed.
+
+To erase all Delphin memory, first stop every Delphin process and then delete the
+database path printed in the startup banner. SQLite may use adjacent `-wal` and
+`-shm` files while a process is running, which is why deletion should only happen
+after the process exits.
+
 ## Options
 
 ```
