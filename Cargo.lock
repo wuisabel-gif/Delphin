@@ -100,6 +100,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "terminal_size",
+ "termios",
  "toml",
 ]
 

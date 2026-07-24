@@ -201,6 +201,7 @@ after the process exits.
 --tick-ms N        idle-detector tick interval (ms) [150]
 --submit-newline   submit prompts with "\n" instead of "\r"
 --live             stream busy prompts immediately instead of queueing
+--passthrough      forward raw terminal input byte-for-byte (Unix)
 --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
 --agent KIND       preset interrupt+live defaults for claude | codex | generic
 --interrupt-word W add W to the urgency words that barge in (repeatable)
@@ -222,6 +223,22 @@ delphin --agent generic -- some-repl # ctrl-c interrupt, queue mode
 
 `claude`/`codex` → `--interrupt esc --live`; `generic` → `--interrupt ctrl-c`,
 queue mode. Starting points, not gospel — override any of them explicitly.
+
+### Raw terminal passthrough
+
+Line-based prompt routing is the default because Delphin needs complete prompts
+to queue and arbitrate them. For a full-screen TUI that depends on arrow keys,
+completion menus, bracketed paste, mouse input, or other raw terminal controls,
+use byte-for-byte passthrough:
+
+```bash
+delphin --passthrough -- some-tui
+```
+
+Passthrough mode temporarily places the Unix terminal in raw mode and restores
+its original settings on exit. Because input is no longer divided into prompts,
+queueing, user-prompt memory, and arbiter decisions are disabled in this mode;
+agent output is still mirrored and remembered.
 
 ### Arbiter policies
 

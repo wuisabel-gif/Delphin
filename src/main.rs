@@ -42,6 +42,7 @@ OPTIONS:
     --tick-ms N        idle-detector tick interval (ms) [150]
     --submit-newline   submit prompts with \"\\n\" instead of \"\\r\"
     --live             stream busy prompts immediately instead of queueing
+    --passthrough      forward raw terminal input byte-for-byte (Unix)
     --interrupt KIND   esc | double-esc | ctrl-c | none | <literal> [esc]
     --agent KIND       preset interrupt+live defaults for claude | codex | generic
     --arbiter KIND     heuristic | question [heuristic]
@@ -109,6 +110,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
     let mut interrupt = cfg.interrupt.clone();
     let mut arbiter_name = cfg.arbiter.clone();
     let mut live = cfg.live;
+    let mut passthrough = cfg.passthrough;
     let mut ready_markers = cfg.ready_markers.clone();
     let mut interrupt_keywords = cfg.interrupt_keywords.clone();
     let mut logging = cfg.log;
@@ -132,6 +134,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
             "--tick-ms" => tick_ms = parse_num(it.next(), "--tick-ms")?,
             "--submit-newline" => submit_newline = true,
             "--live" => live = true,
+            "--passthrough" => passthrough = true,
             "--interrupt" => interrupt = next_val(it.next(), "--interrupt")?,
             "--agent" => {
                 it.next(); // value already consumed by the pre-scan above
@@ -181,6 +184,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
         interrupt_bytes: interrupt_bytes(&interrupt),
         interrupt_label: interrupt,
         ready_markers,
+        passthrough,
         rows,
         cols,
     };
