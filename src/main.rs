@@ -151,6 +151,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
         eprint!("{HELP}");
         anyhow::bail!("no agent command provided");
     }
+    validate_timing_options(tick_ms)?;
 
     let arbiter_kind = ArbiterKind::parse(&arbiter_name).ok_or_else(|| {
         anyhow::anyhow!("unknown --arbiter '{arbiter_name}' (use: heuristic | question)")
@@ -334,6 +335,13 @@ fn parse_num(v: Option<&String>, flag: &str) -> anyhow::Result<u64> {
         .map_err(|_| anyhow::anyhow!("{flag} must be a non-negative integer"))
 }
 
+fn validate_timing_options(tick_ms: u64) -> anyhow::Result<()> {
+    if tick_ms == 0 {
+        anyhow::bail!("--tick-ms must be greater than zero");
+    }
+    Ok(())
+}
+
 fn interrupt_bytes(kind: &str) -> Vec<u8> {
     match kind {
         "esc" => vec![0x1b],
@@ -374,7 +382,7 @@ fn agent_preset(name: &str) -> Option<(&'static str, bool)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_preset, help_requested};
+    use super::{agent_preset, help_requested, validate_timing_options};
 
     #[test]
     fn agent_presets() {
@@ -391,5 +399,11 @@ mod tests {
 
         let args = vec!["--help".into(), "--".into(), "tool".into()];
         assert!(help_requested(&args));
+    }
+
+    #[test]
+    fn ticker_interval_must_be_nonzero() {
+        assert!(validate_timing_options(0).is_err());
+        assert!(validate_timing_options(1).is_ok());
     }
 }
