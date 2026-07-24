@@ -196,9 +196,7 @@ pub fn run(
                 // Smarter idle: if the output now ends with a "ready" prompt, the
                 // agent is waiting for us — go idle on the next tick instead of
                 // waiting out the full silence window.
-                if tail_is_ready(&agent_buf, &settings.ready_markers) {
-                    force_idle = true;
-                }
+                force_idle = tail_is_ready(&agent_buf, &settings.ready_markers);
             }
             Event::Tick => {
                 // Cheap poll for a terminal resize (piggybacking on the existing
@@ -548,9 +546,7 @@ mod tests {
                 TranscriptEvent::Output(at_ms, bytes) => {
                     agent_buf.extend_from_slice(bytes);
                     last_activity_ms = at_ms;
-                    if tail_is_ready(&agent_buf, ready_markers) {
-                        force_idle = true;
-                    }
+                    force_idle = tail_is_ready(&agent_buf, ready_markers);
                 }
                 TranscriptEvent::Tick(at_ms) => {
                     let last_activity_elapsed =
@@ -591,6 +587,21 @@ mod tests {
             first_idle_transition(&events, 800, 0, &markers),
             Some(10),
             "a ready marker must flip idle on the next tick, not wait out the silence timer"
+        );
+    }
+
+    #[test]
+    fn continued_output_invalidates_a_ready_marker_before_the_next_tick() {
+        let events = [
+            TranscriptEvent::Output(0, BANNER),
+            TranscriptEvent::Output(5, b"background refresh"),
+            TranscriptEvent::Tick(10),
+        ];
+        let markers = vec!["you> ".to_string()];
+        assert_eq!(
+            first_idle_transition(&events, 800, 0, &markers),
+            None,
+            "a marker is stale once later output shows the process is still active"
         );
     }
 
