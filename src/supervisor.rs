@@ -26,6 +26,9 @@ use crate::queue::PromptQueue;
 // ponytail: raise this if a slow token-streaming agent still gets interrupted
 // mid-thought; it only affects the no-ready-marker path.
 const MIDLINE_GRACE: u32 = 3;
+/// A process that exits immediately after Delphin sends its configured
+/// interrupt was deliberately stopped by the user, not an independent crash.
+const INTERRUPT_EXIT_GRACE: Duration = Duration::from_secs(2);
 
 pub struct Settings {
     pub agent_command: Vec<String>,
@@ -63,7 +66,7 @@ pub fn run(
     settings: &Settings,
     arbiter: Box<dyn Arbiter>,
     memlog: Option<MemoryLog>,
-) -> Result<()> {
+) -> Result<u8> {
     let program = settings
         .agent_command
         .first()
@@ -163,6 +166,8 @@ pub fn run(
     let mut next_group: u64 = 0; // monotonic id minted per user prompt
     let mut current_group: u64 = 0; // group the agent's current output belongs to (0 = boot)
     let mut term_size = (settings.cols, settings.rows); // polled on each Tick to catch a resize
+    let mut child_exit_code: Option<u8> = None;
+    let mut interrupt_sent_at: Option<Instant> = None;
 
     let flush_agent = |buf: &mut Vec<u8>, memlog: &Option<MemoryLog>, group: u64| {
         if buf.is_empty() {
@@ -273,6 +278,7 @@ pub fn run(
                         if !settings.interrupt_bytes.is_empty() {
                             let _ = writer.write_all(&settings.interrupt_bytes);
                             let _ = writer.flush();
+                            interrupt_sent_at = Some(Instant::now());
                             thread::sleep(Duration::from_millis(150));
                         }
                         // the interrupted partial reply belongs to the old prompt
@@ -306,12 +312,20 @@ pub fn run(
                 // A flight recorder that silently stops when the agent crashes
                 // is a worse gap than the crash itself — record it, and name
                 // any prompts that were queued but never delivered.
+                let status = child.wait().context("waiting for agent after PTY closed")?;
+                let user_interrupted =
+                    interrupt_sent_at.is_some_and(|sent| sent.elapsed() <= INTERRUPT_EXIT_GRACE);
+                child_exit_code = Some(if user_interrupted {
+                    0
+                } else {
+                    status.exit_code().min(u8::MAX as u32) as u8
+                });
                 let msg = if queue.is_empty() {
-                    "agent exited".to_string()
+                    format!("agent exited: {status}")
                 } else {
                     format!(
-                        "agent exited ({} prompt(s) still queued, never sent)",
-                        queue.len()
+                        "agent exited: {status} ({} prompt(s) still queued, never sent)",
+                        queue.len(),
                     )
                 };
                 notice!("{msg}");
@@ -324,9 +338,11 @@ pub fn run(
     }
 
     flush_agent(&mut agent_buf, &memlog, current_group);
-    let _ = child.kill();
-    let _ = child.wait();
-    Ok(())
+    if child_exit_code.is_none() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    Ok(child_exit_code.unwrap_or(0))
 }
 
 /// Returns the newly-queried terminal size if it differs from `current`, or

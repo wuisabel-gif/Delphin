@@ -169,3 +169,21 @@ fn interrupt_then_quit_exits_clean() {
     );
     assert!(status.success(), "delphin should exit 0, got {status}");
 }
+
+#[test]
+fn wrapped_process_exit_code_is_propagated() {
+    let bin = env!("CARGO_BIN_EXE_delphin");
+    let mut child = Command::new(bin)
+        .args(["--no-log", "--", "sh", "-c", "exit 7"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn delphin");
+
+    // Keep Delphin's stdin open so the wrapped process, rather than user EOF,
+    // determines how the supervisor shuts down.
+    let _stdin = child.stdin.take().expect("stdin");
+    let status = child.wait().expect("wait for delphin");
+    assert_eq!(status.code(), Some(7));
+}

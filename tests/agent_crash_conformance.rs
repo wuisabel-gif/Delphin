@@ -1,7 +1,7 @@
 //! Failure-mode hardening (roadmap 0.4): the agent can disappear unexpectedly
 //! — a crash, an OOM kill, a panic — while a prompt is still sitting in
 //! delphin's queue, never released. Prove that:
-//!   1. delphin exits cleanly (no hang, no error) when that happens, and
+//!   1. delphin exits promptly and reports failure when that happens, and
 //!   2. the fact that it happened, and that a prompt was dropped, is written
 //!      to memory — a flight recorder that silently stops when the agent
 //!      crashes would defeat its own purpose.
@@ -78,7 +78,10 @@ fn assert_survives_unexpected_exit(agent_script: &str, db_tag: &str) {
         );
         thread::sleep(Duration::from_millis(50));
     };
-    assert!(status.success(), "delphin should exit 0, got {status}");
+    assert!(
+        !status.success(),
+        "delphin should propagate the wrapped process failure, got {status}"
+    );
 
     let conn = rusqlite::Connection::open(&db).expect("open memory db");
     let verdicts: Vec<String> = conn
