@@ -35,6 +35,26 @@ Then MemoryWhale's **Recall** panel searches those conversation turns alongside
 your notes and terminal commands — each result with a "retrieved because…"
 explanation.
 
+## Shared database contract
+
+The integration owns one table, `agent_turns`. Delphin writes it and MemoryWhale
+retrieval reads the `id`, `ts`, `direction`, and `text` columns. Delphin also
+uses `session_id`, `verdict`, `cwd`, and the additive `turn_group_id` column.
+Neither project should repurpose those names with incompatible types or
+constraints.
+
+When `--db` points at an existing database, Delphin:
+
+- enables WAL mode and a three-second busy timeout for concurrent access;
+- creates `agent_turns` when it is absent;
+- adds `turn_group_id` when opening the older shared schema;
+- validates all required columns before recording begins; and
+- leaves unrelated MemoryWhale tables and schema-version metadata untouched.
+
+An incompatible `agent_turns` table fails at startup with the missing columns
+listed, rather than allowing the session to run while silently losing every
+memory write.
+
 ## Naming
 
 Both are cetaceans on purpose: **Delphin** (the dolphin) for communication,
