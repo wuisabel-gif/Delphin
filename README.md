@@ -251,6 +251,20 @@ The policy that decides *wait vs interrupt* is swappable with `--arbiter`:
   who/what/why/how/…), since a question usually needs answering before the
   current work is useful. Plain instructions still queue.
 
+### Custom arbiter policies
+
+Delphin also exposes a Rust library target. Other crates can implement
+`delphin::arbiter::Arbiter` and pass the policy to
+`delphin::supervisor::run`, using the same `Decision` and `Verdict` types as the
+built-in policies.
+
+See [`examples/custom_arbiter.rs`](examples/custom_arbiter.rs) for a complete
+policy and run it with:
+
+```bash
+cargo run --example custom_arbiter
+```
+
 ### Smarter idle detection
 
 By default "idle" is inferred from output silence (`--idle-ms`). If your agent
