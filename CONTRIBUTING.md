@@ -7,15 +7,16 @@ wrapper for AI agent CLIs. Contributions of all sizes are welcome.
 
 ```bash
 cargo build
-cargo test                      # unit tests (fast, deterministic)
+cargo test --all                # unit + PTY conformance tests
 cargo run -- --interrupt ctrl-c -- bash examples/mock-agent.sh   # try it
 ```
 
-Run the end-to-end test (drives the binary against the mock agent; timing-based,
-so it's `#[ignore]`d by default):
+The PTY conformance tests run by default and take longer than the unit tests.
+During focused development, run one integration target directly:
 
 ```bash
-cargo test --test e2e -- --ignored
+cargo test --test e2e
+cargo test --test silent_agent_conformance
 ```
 
 ## Before you open a PR
@@ -39,16 +40,19 @@ cargo test --all                # tests
 | `src/arbiter.rs` | `Arbiter` trait + default heuristic policy |
 | `src/queue.rs` | prompt FIFO |
 | `src/memory.rs` | self-contained SQLite log + ANSI stripping |
+| `src/config.rs` | TOML configuration defaults and loading |
+| `src/replay.rs` | historical arbiter-policy comparison |
 | `examples/mock-agent.sh` | fake "thinking" agent for testing |
-| `tests/e2e.rs` | end-to-end integration test |
+| `examples/*-agent.sh` | deterministic process-behavior fixtures |
+| `tests/e2e.rs` | queue, release, interrupt, and shutdown integration |
+| `tests/*_conformance.rs` | silent, crash, and link-loss scenarios |
 
 ## Good first contributions
 
-- **New arbiter policies** behind the `Arbiter` trait (e.g. an LLM-judge, a
-  priority queue, or "questions interrupt / commands queue").
-- **Better idle detection** — parse an agent's own "esc to interrupt" / ready
-  markers instead of relying purely on output silence.
-- **Per-agent presets** for `--interrupt` and `--idle-ms`.
+- Add a golden transcript fixture for another command-line tool.
+- Add CLI parsing and configuration error-message tests.
+- Document a tested setup for another terminal or operating system.
+- Add a focused arbiter policy with deterministic unit tests.
 
 ## Conventions
 
