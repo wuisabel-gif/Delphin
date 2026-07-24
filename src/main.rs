@@ -66,7 +66,7 @@ EXAMPLES:
 
 fn main() -> ExitCode {
     match real_main() {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(e) => {
             eprintln!("delphin: error: {e:#}");
             ExitCode::FAILURE
@@ -74,21 +74,23 @@ fn main() -> ExitCode {
     }
 }
 
-fn real_main() -> anyhow::Result<()> {
+fn real_main() -> anyhow::Result<ExitCode> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "-h" || a == "--help") {
         print!("{HELP}");
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
 
     // Subcommand: query the conversation memory.
     if args.first().map(String::as_str) == Some("recall") {
-        return run_recall(&args[1..]);
+        run_recall(&args[1..])?;
+        return Ok(ExitCode::SUCCESS);
     }
 
     // Subcommand: replay history through an arbiter, compare vs what happened.
     if args.first().map(String::as_str) == Some("replay") {
-        return run_replay(&args[1..]);
+        run_replay(&args[1..])?;
+        return Ok(ExitCode::SUCCESS);
     }
 
     let (cfg, cfg_src) = Config::load();
@@ -204,7 +206,8 @@ fn real_main() -> anyhow::Result<()> {
         None
     };
 
-    supervisor::run(&settings, arbiter, memlog)
+    let child_exit_code = supervisor::run(&settings, arbiter, memlog)?;
+    Ok(ExitCode::from(child_exit_code))
 }
 
 /// `delphin recall [--db PATH] [--limit N] [query...]` — search the conversation
