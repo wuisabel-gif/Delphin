@@ -12,21 +12,15 @@
 //!
 //! Run `delphin --help` for the full option list.
 
-mod arbiter;
-mod config;
-mod memory;
-mod queue;
-mod replay;
-mod supervisor;
-
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use arbiter::{build_arbiter, ArbiterKind};
 use chrono::Utc;
-use config::Config;
-use memory::MemoryLog;
-use supervisor::Settings;
+use delphin::arbiter::{self, build_arbiter, ArbiterKind};
+use delphin::config::Config;
+use delphin::memory::{self, MemoryLog};
+use delphin::replay;
+use delphin::supervisor::{self, Settings};
 
 const HELP: &str = "\
 delphin — a duplex companion for AI agent CLIs

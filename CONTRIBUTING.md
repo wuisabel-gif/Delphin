@@ -51,6 +51,7 @@ crate and Homebrew artifacts are available.
 
 | File | Role |
 |---|---|
+| `src/lib.rs` | reusable public module surface |
 | `src/main.rs` | CLI parsing, wiring |
 | `src/supervisor.rs` | PTY spawn, idle detection, event loop |
 | `src/arbiter.rs` | `Arbiter` trait + default heuristic policy |
