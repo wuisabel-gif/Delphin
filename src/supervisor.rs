@@ -453,7 +453,10 @@ fn is_idle_now(
     force_idle || {
         let quiet = last_activity_elapsed >= idle_after;
         let past_floor = busy_since_elapsed >= min_busy;
-        let settled = ends_line(agent_buf) || last_activity_elapsed >= idle_after * MIDLINE_GRACE;
+        let midline_deadline = idle_after
+            .checked_mul(MIDLINE_GRACE)
+            .unwrap_or(Duration::MAX);
+        let settled = ends_line(agent_buf) || last_activity_elapsed >= midline_deadline;
         quiet && past_floor && settled
     }
 }
