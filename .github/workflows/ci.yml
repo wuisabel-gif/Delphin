@@ -10,8 +10,13 @@ env:
 
 jobs:
   check:
-    name: fmt · clippy · test
-    runs-on: ubuntu-latest
+    name: fmt · clippy · test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
