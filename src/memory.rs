@@ -66,6 +66,7 @@ impl MemoryLog {
         conn.execute_batch(
             "
             PRAGMA journal_mode = WAL;
+            PRAGMA busy_timeout = 3000;
             CREATE TABLE IF NOT EXISTS agent_turns (
                 id INTEGER PRIMARY KEY,
                 session_id TEXT NOT NULL,
@@ -76,7 +77,6 @@ impl MemoryLog {
                 cwd TEXT,
                 turn_group_id INTEGER      -- a prompt, its release, and the reply it triggered share this
             );
-            CREATE INDEX IF NOT EXISTS idx_agent_turns_session ON agent_turns(session_id);
             ",
         )?;
         // Additive migration for DBs created before turn_group_id existed; the
@@ -85,6 +85,11 @@ impl MemoryLog {
             "ALTER TABLE agent_turns ADD COLUMN turn_group_id INTEGER",
             [],
         );
+        validate_agent_turns_schema(&conn)?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_turns_session ON agent_turns(session_id)",
+            [],
+        )?;
         Ok(Self {
             conn,
             session_id: session_id.into(),
@@ -138,6 +143,38 @@ impl MemoryLog {
     pub fn system(&self, text: &str, group: u64) {
         self.log(TurnDirection::System, None, text, group);
     }
+}
+
+/// Validate the shared `agent_turns` contract before a session starts. This
+/// turns an incompatible external `--db` schema into one actionable startup
+/// error instead of silently dropping every later memory write.
+fn validate_agent_turns_schema(conn: &Connection) -> anyhow::Result<()> {
+    const REQUIRED: &[&str] = &[
+        "id",
+        "session_id",
+        "ts",
+        "direction",
+        "verdict",
+        "text",
+        "cwd",
+        "turn_group_id",
+    ];
+    let mut stmt = conn.prepare("PRAGMA table_info(agent_turns)")?;
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get(1))?
+        .collect::<Result<_, _>>()?;
+    let missing: Vec<&str> = REQUIRED
+        .iter()
+        .copied()
+        .filter(|required| !columns.iter().any(|column| column == required))
+        .collect();
+    if !missing.is_empty() {
+        anyhow::bail!(
+            "incompatible agent_turns schema; missing column(s): {}",
+            missing.join(", ")
+        );
+    }
+    Ok(())
 }
 
 /// Strip ANSI / terminal control sequences so stored agent output is readable.
@@ -315,6 +352,80 @@ mod tests {
         let none = search(Some(dir.join("nope.sqlite3")), "x", 5).unwrap();
         assert!(none.is_empty());
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn memorywhale_agent_turns_fixture_is_compatible() {
+        let dir = std::env::temp_dir().join(format!("delphin-memorywhale-{}", std::process::id()));
+        let db = dir.join("memorywhale.sqlite3");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // MemoryWhale's shared contract intentionally omits Delphin's optional
+        // grouping column; Delphin adds it through its existing migration.
+        let conn = Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE agent_turns (
+                id INTEGER PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                verdict TEXT,
+                text TEXT NOT NULL,
+                cwd TEXT
+            );",
+        )
+        .unwrap();
+        drop(conn);
+
+        let ml = MemoryLog::open("shared-session", None, Some(db.clone())).unwrap();
+        ml.user("shared memory", "send_now", 4);
+        drop(ml);
+
+        // This is the projection MemoryWhale uses for retrieval.
+        let conn = Connection::open(&db).unwrap();
+        let row: (i64, String, String, String) = conn
+            .query_row(
+                "SELECT id, ts, direction, text FROM agent_turns",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(row.2, "user");
+        assert_eq!(row.3, "shared memory");
+
+        let has_group_column: bool = conn
+            .prepare("PRAGMA table_info(agent_turns)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .flatten()
+            .any(|column| column == "turn_group_id");
+        assert!(has_group_column);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn incompatible_agent_turns_schema_is_rejected_at_open() {
+        let dir = std::env::temp_dir().join(format!("delphin-incompatible-{}", std::process::id()));
+        let db = dir.join("external.sqlite3");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE agent_turns (id INTEGER PRIMARY KEY, text TEXT NOT NULL);",
+        )
+        .unwrap();
+        drop(conn);
+
+        let error = match MemoryLog::open("s1", None, Some(db)) {
+            Ok(_) => panic!("incompatible schema should fail"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+        assert!(message.contains("incompatible agent_turns schema"));
+        assert!(message.contains("session_id"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
