@@ -97,7 +97,7 @@ pub fn run(
     if let Ok(cwd) = std::env::current_dir() {
         cmd.cwd(cwd);
     }
-    for (k, v) in std::env::vars() {
+    for (k, v) in std::env::vars_os() {
         cmd.env(k, v);
     }
 
