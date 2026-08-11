@@ -304,10 +304,14 @@ pub fn search(
         .query_map(params![limit as i64], map)?
         .collect::<Result<Vec<_>, _>>()?
     } else {
-        let pattern = format!("%{q}%");
+        let escaped = q
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{escaped}%");
         conn.prepare(
             "SELECT session_id, ts, direction, verdict, text, turn_group_id \
-             FROM agent_turns WHERE text LIKE ?1 ORDER BY id DESC LIMIT ?2",
+             FROM agent_turns WHERE text LIKE ?1 ESCAPE '\\' ORDER BY id DESC LIMIT ?2",
         )?
         .query_map(params![pattern, limit as i64], map)?
         .collect::<Result<Vec<_>, _>>()?
@@ -377,6 +381,34 @@ mod tests {
         // missing DB -> empty, no error
         let none = search(Some(dir.join("nope.sqlite3")), "x", 5).unwrap();
         assert!(none.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn search_treats_like_metacharacters_as_literals() {
+        let dir =
+            std::env::temp_dir().join(format!("delphin-search-literal-{}", std::process::id()));
+        let db = dir.join("delphin.sqlite3");
+        let _ = std::fs::remove_dir_all(&dir);
+        let ml = MemoryLog::open("s1", None, Some(db.clone())).unwrap();
+        ml.user("progress is 100% complete", "send_now", 1);
+        ml.user("progress is 100 percent complete", "send_now", 2);
+        ml.user("use snake_case here", "send_now", 3);
+        ml.user("use snakeXcase here", "send_now", 4);
+        ml.user(r"open path\name", "send_now", 5);
+        ml.user("open pathname", "send_now", 6);
+        drop(ml);
+
+        for (query, expected) in [
+            ("100%", "progress is 100% complete"),
+            ("snake_case", "use snake_case here"),
+            (r"path\name", r"open path\name"),
+        ] {
+            let hits = search(Some(db.clone()), query, 10).unwrap();
+            assert_eq!(hits.len(), 1, "query {query:?} must match literally");
+            assert_eq!(hits[0].text, expected);
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }
