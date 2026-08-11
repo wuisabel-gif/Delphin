@@ -5,6 +5,9 @@ wrapper for AI agent CLIs. Contributions of all sizes are welcome.
 
 ## Development
 
+For a guided first setup and test loop, see
+[`docs/contributor-quickstart.md`](docs/contributor-quickstart.md).
+
 ```bash
 cargo build
 cargo test --all                # unit + PTY conformance tests
