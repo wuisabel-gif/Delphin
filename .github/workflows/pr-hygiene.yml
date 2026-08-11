@@ -1,0 +1,46 @@
+name: PR Hygiene
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  title-and-body:
+    name: title and body
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      - name: Check PR title and body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const title = (pr.title || "").trim();
+            const body = (pr.body || "").trim();
+            const errors = [];
+
+            if (title.length < 8) {
+              errors.push("PR title must be at least 8 characters.");
+            }
+
+            if (!body) {
+              errors.push("PR body must not be empty.");
+            }
+
+            const placeholderBodies = new Set([
+              "n/a",
+              "na",
+              "none",
+              "no description provided.",
+            ]);
+            if (placeholderBodies.has(body.toLowerCase())) {
+              errors.push("PR body must describe the change, not just use a placeholder.");
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(errors.join("\n"));
+            }
