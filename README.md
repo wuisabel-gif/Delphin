@@ -48,11 +48,11 @@ but:
   are written to a local SQLite file (`agent_turns`) — your conversation history,
   on your machine, nowhere else.
 
-> **Honest scope:** this is *asynchronous handoff*, not simultaneous listening.
-> Your words reach the agent sooner (queued, streamed, or as a barge-in) instead
-> of after you wait — but the agent still perceives them between turns, not
-> mid-token. Delphin makes "talk while it thinks" ergonomic on today's CLIs; it
-> doesn't make the model itself duplex.
+> **Current status:** Delphin gives today's CLI agents an asynchronous handoff
+> layer: your words reach the agent sooner (queued, streamed, or as a barge-in)
+> instead of after you wait. The wrapped CLI still decides when it can consume
+> that input, so Delphin improves the interface around current agents rather
+> than changing the model's native generation loop.
 
 ```
         you type ──────────────┐
@@ -349,6 +349,11 @@ Then run `/delphin` (e.g. `/delphin recall migration`).
 
 Both skills know how to query Delphin's `agent_turns` memory and how to build/run
 the wrapper. Plugin manifests live in [`.claude-plugin/`](.claude-plugin/).
+
+Future integrations could expose Delphin's queue, arbiter, and memory through an
+MCP-style or API-plugin interface. That would let Codex, Claude, or other model
+API hosts add the same talk-while-it-works capability without going through a
+terminal wrapper, while keeping the current CLI path local-first and zero-setup.
 
 ## Layout
 
