@@ -3,6 +3,9 @@
 Thanks for your interest! Delphin is a small, local-first Rust CLI — a duplex
 wrapper for AI agent CLIs. Contributions of all sizes are welcome.
 
+By participating, you agree to follow the
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+
 ## Development
 
 For a guided first setup and test loop, see
