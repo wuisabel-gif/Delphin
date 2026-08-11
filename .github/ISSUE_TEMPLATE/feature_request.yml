@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an idea or improvement.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Problem or motivation
+      description: What are you trying to do that is hard or impossible today?
+      placeholder: I want Delphin to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like Delphin to do?
+      placeholder: Add a flag/config option/behavior that...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, workarounds, or trade-offs you have considered.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This keeps the default path local-first and zero-setup, or any network/model use is optional with a fallback.
+          required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Add links, examples, sketches, or related issues.
