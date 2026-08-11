@@ -1,0 +1,73 @@
+name: Bug report
+description: Something did not work as expected.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the behavior you saw.
+      placeholder: Delphin crashed, queued the wrong prompt, or behaved unexpectedly...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the command you ran, what you typed, and when the issue happened.
+      placeholder: |
+        1. Run `delphin --interrupt esc -- bash examples/mock-agent.sh`
+        2. Type ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual
+      description: Tell us what you expected and what happened instead.
+      placeholder: |
+        Expected:
+        Actual:
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15.6, Ubuntu 24.04, etc.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Delphin version or commit
+      placeholder: delphin 0.3.0 or commit SHA
+    validations:
+      required: true
+
+  - type: input
+    id: agent
+    attributes:
+      label: Wrapped agent or command
+      placeholder: claude, codex, bash examples/mock-agent.sh, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Relevant Delphin settings
+      description: Include non-default flags or config values.
+      placeholder: --interrupt esc, --idle-ms 800, --live, --ready "you> "
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Add relevant `[delphin]` notices, terminal behavior, screenshots, or logs.
