@@ -190,3 +190,33 @@ fn wrapped_process_exit_code_is_propagated() {
     let status = child.wait().expect("wait for delphin");
     assert_eq!(status.code(), Some(7));
 }
+
+#[cfg(unix)]
+#[test]
+fn non_unicode_environment_is_forwarded_without_panicking() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let bin = env!("CARGO_BIN_EXE_delphin");
+    let mut child = Command::new(bin)
+        .args(["--no-log", "--", "sh", "-c", "exit 0"])
+        .env(
+            "DELPHIN_TEST_NON_UNICODE",
+            OsString::from_vec(vec![0xff, 0xfe]),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn delphin");
+
+    // Keep stdin open so the wrapped process controls supervisor shutdown.
+    let _stdin = child.stdin.take().expect("stdin");
+    let output = child.wait_with_output().expect("wait for delphin");
+
+    assert!(
+        output.status.success(),
+        "delphin should forward non-Unicode environment values without panicking:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
