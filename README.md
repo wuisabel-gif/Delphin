@@ -247,6 +247,8 @@ The policy that decides *wait vs interrupt* is swappable with `--arbiter`:
 - **`heuristic`** (default) — protect the in-flight work; only an urgency word
   ("stop", "wait", "cancel", "halt", …) interrupts. Add your own with
   `--interrupt-word` (repeatable) or `interrupt_keywords` in the config file.
+  The default words are English-only; for other languages add your own, e.g.
+  `--interrupt-word 待って --interrupt-word やめて`.
 - **`question`** — also interrupt on **questions** (ends with "?", or starts with
   who/what/why/how/…), since a question usually needs answering before the
   current work is useful. Plain instructions still queue.

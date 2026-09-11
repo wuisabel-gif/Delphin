@@ -24,6 +24,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Urgency keywords no longer match inside words that contain non-ASCII
+  letters (e.g. "stop" in "éstop").
 - Interrupt-driven process termination now shuts down cleanly.
 - The Claude plugin manifest no longer contains an unsupported `skills` field.
 - Recall queries now treat `%`, `_`, and `\` as literal characters instead of
