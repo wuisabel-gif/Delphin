@@ -112,7 +112,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
 
     // An --agent preset is a convenience baseline; apply it before the flag loop
     // so any explicit flag below still wins regardless of argument order.
-    if let Some(name) = flag_value(ours, "--agent") {
+    if let Some(name) = flag_value(ours, "--agent")? {
         let (preset_interrupt, preset_live) = agent_preset(&name).ok_or_else(|| {
             anyhow::anyhow!("unknown --agent '{name}' (use: claude | codex | generic)")
         })?;
@@ -350,11 +350,17 @@ fn interrupt_bytes(kind: &str) -> Vec<u8> {
     }
 }
 
-/// Value that follows `flag` in `args`, if present (first occurrence).
-fn flag_value(args: &[String], flag: &str) -> Option<String> {
-    args.iter()
-        .position(|a| a == flag)
-        .and_then(|i| args.get(i + 1).cloned())
+/// Pre-scan for a value-taking flag. Returns `Ok(None)` when the flag is
+/// absent and an error when it is present but has no value, so a trailing
+/// `--agent` is rejected like every other value-taking flag.
+fn flag_value(args: &[String], flag: &str) -> anyhow::Result<Option<String>> {
+    match args.iter().position(|a| a == flag) {
+        None => Ok(None),
+        Some(i) => match args.get(i + 1) {
+            Some(v) => Ok(Some(v.clone())),
+            None => anyhow::bail!("{flag} requires a value (claude | codex | generic)"),
+        },
+    }
 }
 
 /// Delphin owns help flags only before the command delimiter. Everything after
@@ -380,7 +386,7 @@ fn agent_preset(name: &str) -> Option<(&'static str, bool)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_preset, help_requested, validate_timing_options};
+    use super::{agent_preset, flag_value, help_requested, validate_timing_options};
 
     #[test]
     fn agent_presets() {
@@ -388,6 +394,22 @@ mod tests {
         assert_eq!(agent_preset("CODEX"), Some(("esc", true))); // case-insensitive
         assert_eq!(agent_preset("generic"), Some(("ctrl-c", false)));
         assert_eq!(agent_preset("nope"), None);
+    }
+
+    #[test]
+    fn agent_flag_without_value_is_rejected() {
+        let args: Vec<String> = vec!["--live".into(), "--agent".into()];
+        let err = flag_value(&args, "--agent").unwrap_err();
+        assert!(err.to_string().contains("--agent requires a value"));
+    }
+
+    #[test]
+    fn agent_flag_absent_or_with_value() {
+        let args: Vec<String> = vec!["--live".into()];
+        assert_eq!(flag_value(&args, "--agent").unwrap(), None);
+
+        let args: Vec<String> = vec!["--agent".into(), "codex".into()];
+        assert_eq!(flag_value(&args, "--agent").unwrap(), Some("codex".into()));
     }
 
     #[test]
