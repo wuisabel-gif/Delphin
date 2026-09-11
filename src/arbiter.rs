@@ -244,17 +244,19 @@ fn contains_word(hay: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return false;
     }
-    let bytes = hay.as_bytes();
     let mut start = 0;
     while let Some(pos) = hay[start..].find(needle) {
         let i = start + pos;
-        let before_ok = i == 0 || !is_word_byte(bytes[i - 1]);
         let after = i + needle.len();
-        let after_ok = after >= bytes.len() || !is_word_byte(bytes[after]);
+        // Inspect whole chars, not bytes: a UTF-8 continuation byte is never ASCII
+        // alphanumeric, so a byte check would treat "é" in "éstop" as a boundary.
+        let before_ok = !hay[..i].chars().next_back().is_some_and(is_word_char);
+        let after_ok = !hay[after..].chars().next().is_some_and(is_word_char);
         if before_ok && after_ok {
             return true;
         }
-        start = i + 1;
+        // Advance past the first char of this match, staying on a char boundary.
+        start = i + hay[i..].chars().next().map_or(1, char::len_utf8);
         if start >= hay.len() {
             break;
         }
@@ -262,8 +264,19 @@ fn contains_word(hay: &str, needle: &str) -> bool {
     false
 }
 
-fn is_word_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
+fn is_word_char(c: char) -> bool {
+    c == '_' || (c.is_alphanumeric() && !is_unspaced_script(c))
+}
+
+/// Scripts written without spaces between words (kana, CJK ideographs). Treating
+/// them as boundaries keeps a keyword like "待って" matching inside "もう待って".
+fn is_unspaced_script(c: char) -> bool {
+    matches!(c,
+        '\u{3040}'..='\u{30FF}' // Hiragana, Katakana
+        | '\u{3400}'..='\u{4DBF}' // CJK Extension A
+        | '\u{4E00}'..='\u{9FFF}' // CJK Unified Ideographs
+        | '\u{F900}'..='\u{FAFF}' // CJK Compatibility Ideographs
+    )
 }
 
 #[cfg(test)]
@@ -320,6 +333,25 @@ mod tests {
             Verdict::Interrupt
         );
         assert_eq!(a.decide(&busy("halt, wrong branch")), Verdict::Interrupt);
+    }
+
+    #[test]
+    fn keywords_do_not_match_inside_non_ascii_words() {
+        let a = HeuristicArbiter::with_defaults();
+        assert_eq!(a.decide(&busy("éstop is a word")), Verdict::Enqueue);
+        assert_eq!(a.decide(&busy("stopé is a word")), Verdict::Enqueue);
+        assert_eq!(a.decide(&busy("é stop")), Verdict::Interrupt);
+    }
+
+    #[test]
+    fn non_ascii_keywords_match_whole_words_without_panicking() {
+        assert!(contains_word("待って", "待って"));
+        assert!(contains_word("ok, やめて!", "やめて"));
+        // Kana / CJK have no spaces between words, so they act as boundaries.
+        assert!(contains_word("もう待って", "待って"));
+        // A rejected match on a multi-byte keyword must not slice mid-char.
+        assert!(!contains_word("x待って", "待って"));
+        assert!(contains_word("x待って 待って", "待って"));
     }
 
     #[test]
