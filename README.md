@@ -16,7 +16,7 @@
 
 </div>
 
-> 🐋 **Sibling project:** [MemoryWhale](https://github.com/wuisabel-gif/MemWhale) — the **memory** layer. Delphin handles *communication* (talk while the agent thinks); MemoryWhale handles *memory* (recall with explanations). They refer to each other — see [ECOSYSTEM.md](ECOSYSTEM.md). Point Delphin at MemoryWhale's database with `--db` to feed your conversations into it.
+> 🐋 **Sibling project:** [MemoryWhale](https://github.com/wuisabel-gif/MemWhale) — the **memory** layer. Delphin handles *communication* (talk while the agent thinks); MemoryWhale handles *memory* (recall with explanations). They refer to each other — see [ECOSYSTEM.md](ECOSYSTEM.md). Run `delphin --memorywhale -- claude` to record your conversations in MemoryWhale and get live "seen this before" hints for errors.
 
 *Delphin* — from the Greek **delphís** (dolphin), with a fin tipped to **Delphi**.
 Dolphins swim in pods, bow-ride alongside ships, and talk in a constant stream of
@@ -173,6 +173,11 @@ memory (companionship by choice, not dependency):
 delphin --db /path/to/other.sqlite3 -- claude
 ```
 
+Or record into [MemoryWhale](https://github.com/wuisabel-gif/MemWhale) with
+`--memorywhale`. Turns go through `mw turns`, which redacts common secret shapes
+before storing them, and errors in the agent's output get live hints from
+`mw hint` when MemoryWhale has seen them before. See [ECOSYSTEM.md](ECOSYSTEM.md).
+
 Or turn memory off entirely with `--no-log`.
 
 ### Privacy and retention
@@ -180,7 +185,9 @@ Or turn memory off entirely with `--no-log`.
 Memory includes complete prompts, arbiter decisions, supervisor events, and
 terminal output. That can include source code, file paths, credentials printed by
 a command, or secrets pasted into a prompt. Delphin does not upload this data,
-redact it, or delete it automatically.
+redact it, or delete it automatically. With `--memorywhale`, MemoryWhale redacts
+common secret shapes before storing turns; its redaction is best effort, not a
+guarantee.
 
 - Use `--no-log` for sensitive sessions.
 - Newly created database files use owner-only permissions on Unix (`0600`).
@@ -208,7 +215,9 @@ after the process exits.
 --arbiter KIND     heuristic | question [heuristic]
 --ready MARKER     output ending with MARKER means the agent is idle (repeatable)
 --db PATH          remember into this SQLite file instead of the default
+--memorywhale      record through MemoryWhale and show live error hints
 --no-log           do not remember the conversation
+-V, --version      print the version
 ```
 
 ### Agent presets

@@ -3,8 +3,14 @@
 //! By default it writes to `<data_local>/Delphin/delphin.sqlite3`. Pass a custom path
 //! (e.g. MemoryWhale's `memorywhale.sqlite3`) to let delphin *accompany* another
 //! system's memory instead — companionship by choice, not dependency.
+//!
+//! With `--memorywhale`, turns go through `mw turns` instead: MemoryWhale owns
+//! its schema and redacts secrets before anything is stored.
 
+use std::io::Write;
 use std::path::PathBuf;
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::Mutex;
 
 use anyhow::Context;
 use chrono::Utc;
@@ -39,10 +45,21 @@ impl TurnDirection {
 /// Logging failures are reported to stderr but never propagated — remembering
 /// must not crash the conversation.
 pub struct MemoryLog {
-    conn: Connection,
+    sink: Sink,
     session_id: String,
     cwd: Option<String>,
-    db_path: PathBuf,
+}
+
+enum Sink {
+    Sqlite {
+        conn: Connection,
+        path: PathBuf,
+    },
+    /// A long-lived `mw turns` child fed one JSON line per turn.
+    MemoryWhale {
+        stdin: Mutex<Option<ChildStdin>>,
+        child: Child,
+    },
 }
 
 impl MemoryLog {
@@ -92,10 +109,41 @@ impl MemoryLog {
             [],
         )?;
         Ok(Self {
-            conn,
+            sink: Sink::Sqlite {
+                conn,
+                path: db_path,
+            },
             session_id: session_id.into(),
             cwd,
-            db_path,
+        })
+    }
+
+    /// Record through MemoryWhale: spawn `<mw> turns --session <id> [--cwd <dir>]`
+    /// and stream turns to it. `mw` is the program to run (normally "mw").
+    pub fn memorywhale(
+        mw: &str,
+        session_id: impl Into<String>,
+        cwd: Option<String>,
+    ) -> anyhow::Result<Self> {
+        let session_id = session_id.into();
+        let mut cmd = Command::new(mw);
+        cmd.args(["turns", "--session", &session_id]);
+        if let Some(dir) = &cwd {
+            cmd.args(["--cwd", dir]);
+        }
+        let mut child = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .with_context(|| format!("starting `{mw} turns` (is MemoryWhale installed?)"))?;
+        let stdin = child.stdin.take();
+        Ok(Self {
+            sink: Sink::MemoryWhale {
+                stdin: Mutex::new(stdin),
+                child,
+            },
+            session_id,
+            cwd,
         })
     }
 
@@ -104,24 +152,54 @@ impl MemoryLog {
         &self.session_id
     }
 
-    pub fn db_path(&self) -> &PathBuf {
-        &self.db_path
+    /// Where turns go, for the startup banner.
+    pub fn location(&self) -> String {
+        match &self.sink {
+            Sink::Sqlite { path, .. } => path.display().to_string(),
+            Sink::MemoryWhale { .. } => "MemoryWhale, via mw turns".to_string(),
+        }
     }
 
     fn log(&self, direction: TurnDirection, verdict: Option<&str>, text: &str, group: u64) {
-        let res = self.conn.execute(
-            "INSERT INTO agent_turns (session_id, ts, direction, verdict, text, cwd, turn_group_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                self.session_id,
-                Utc::now().to_rfc3339(),
-                direction.as_str(),
-                verdict,
-                text,
-                self.cwd,
-                group as i64,
-            ],
-        );
+        let res = match &self.sink {
+            Sink::Sqlite { conn, .. } => conn
+                .execute(
+                    "INSERT INTO agent_turns (session_id, ts, direction, verdict, text, cwd, turn_group_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        self.session_id,
+                        Utc::now().to_rfc3339(),
+                        direction.as_str(),
+                        verdict,
+                        text,
+                        self.cwd,
+                        group as i64,
+                    ],
+                )
+                .map(drop)
+                .map_err(anyhow::Error::from),
+            Sink::MemoryWhale { stdin, .. } => {
+                let line = serde_json::json!({
+                    "direction": direction.as_str(),
+                    "verdict": verdict,
+                    "text": text,
+                    "group": group,
+                });
+                let mut pipe = stdin.lock().unwrap();
+                match pipe.as_mut().map(|p| writeln!(p, "{line}")) {
+                    Some(Err(e)) => {
+                        // `mw turns` is gone (often an older MemoryWhale without
+                        // it). Report once and stop, not once per turn.
+                        *pipe = None;
+                        Err(anyhow::anyhow!(
+                            "{e}; MemoryWhale stopped accepting turns (needs mw 0.15 or newer), \
+                             recording is off for this session"
+                        ))
+                    }
+                    _ => Ok(()),
+                }
+            }
+        };
         if let Err(e) = res {
             eprintln!("[delphin] memory log failed: {e}");
         }
@@ -143,6 +221,16 @@ impl MemoryLog {
     /// the group of the prompt it concerns.
     pub fn system(&self, text: &str, group: u64) {
         self.log(TurnDirection::System, None, text, group);
+    }
+}
+
+impl Drop for MemoryLog {
+    /// Close the pipe and wait, so `mw turns` stores the last turns before exit.
+    fn drop(&mut self) {
+        if let Sink::MemoryWhale { stdin, child } = &mut self.sink {
+            drop(stdin.get_mut().unwrap().take());
+            let _ = child.wait();
+        }
     }
 }
 
@@ -349,6 +437,45 @@ mod tests {
             })
             .unwrap();
         assert_eq!(agent_text, "hello");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn memorywhale_sink_streams_json_lines_to_mw_turns() {
+        let dir = std::env::temp_dir().join(format!("delphin-mw-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A stand-in `mw` that records its arguments and stdin.
+        let fake = dir.join("mw");
+        std::fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\necho \"$@\" > {0}/args\ncat > {0}/turns\n",
+                dir.display()
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let ml = MemoryLog::memorywhale(fake.to_str().unwrap(), "s9", Some("/w".into())).unwrap();
+        ml.user("add tests", "enqueue", 2);
+        ml.agent("\x1b[1mdone\x1b[0m", 2);
+        drop(ml); // waits for the child
+
+        let args = std::fs::read_to_string(dir.join("args")).unwrap();
+        assert_eq!(args.trim(), "turns --session s9 --cwd /w");
+        let turns: Vec<serde_json::Value> = std::fs::read_to_string(dir.join("turns"))
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[0]["direction"], "user");
+        assert_eq!(turns[0]["verdict"], "enqueue");
+        assert_eq!(turns[0]["group"], 2);
+        assert_eq!(turns[1]["text"], "done");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

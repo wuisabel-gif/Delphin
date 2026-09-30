@@ -6,6 +6,7 @@
 
 pub mod arbiter;
 pub mod config;
+pub mod hints;
 pub mod memory;
 pub mod queue;
 pub mod replay;

@@ -53,6 +53,9 @@ pub struct Settings {
     pub passthrough: bool,
     pub rows: u16,
     pub cols: u16,
+    /// Program to ask for live "seen this before" hints (normally "mw").
+    /// `None` = no hints.
+    pub hints: Option<String>,
 }
 
 enum Event {
@@ -197,6 +200,7 @@ pub fn run(
     let mut child_exit_code: Option<u8> = None;
     let mut interrupt_sent_at: Option<Instant> = None;
 
+    let mut hints = settings.hints.clone().map(crate::hints::HintWatcher::spawn);
     print_banner(settings, arbiter.as_ref(), &memlog);
 
     while let Ok(ev) = rx.recv() {
@@ -207,6 +211,9 @@ pub fn run(
                 }
                 phase = AgentPhase::Busy;
                 last_activity = Instant::now();
+                if let Some(h) = hints.as_mut() {
+                    h.feed(&bytes);
+                }
                 agent_buf.extend_from_slice(&bytes);
                 bound_agent_buffer(&mut agent_buf, &memlog, current_group);
                 // Smarter idle: if the output now ends with a "ready" prompt, the
@@ -446,7 +453,7 @@ fn print_banner(settings: &Settings, arbiter: &dyn Arbiter, memlog: &Option<Memo
     eprintln!(
         "\x1b[2m  memory     \x1b[0m{}",
         match memlog {
-            Some(ml) => format!("on  ({})", ml.db_path().display()),
+            Some(ml) => format!("on  ({})", ml.location()),
             None => "off".to_string(),
         }
     );

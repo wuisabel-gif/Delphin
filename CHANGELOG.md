@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-30
+
+### Added
+
+- `--memorywhale` (or `memorywhale = true` in config): record turns through
+  MemoryWhale's `mw turns`, so MemoryWhale redacts secrets and owns the schema,
+  and show live "seen this before" hints for errors in the agent's output via
+  `mw hint`. Needs MemoryWhale 0.15 or newer.
+- `delphin --version`.
+
+### Changed
+
+- Library API: `supervisor::Settings` has a new `hints` field, and
+  `MemoryLog::db_path` is replaced by `MemoryLog::location`.
+
 ## [0.3.0] - 2026-09-30
 
 ### Added
@@ -57,7 +72,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Initial PTY wrapper, prompt queue, heuristic arbiter, and local SQLite memory.
 
-[Unreleased]: https://github.com/wuisabel-gif/Delphin/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/wuisabel-gif/Delphin/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wuisabel-gif/Delphin/releases/tag/v0.1.0
