@@ -24,16 +24,28 @@ conversation belong to *you*, not to any one model.
 
 ## Wiring them together (optional)
 
-Delphin keeps its own local memory by default, but you can point it at
-MemoryWhale's database so your conversations flow into MemoryWhale's recall:
+Delphin keeps its own local memory by default. With MemoryWhale 0.15 or newer
+installed, `mw integrate delphin` checks both sides and prints the command:
 
 ```bash
-delphin --db ~/Library/Application\ Support/MemoryWhale/memorywhale.sqlite3 -- claude
+delphin --memorywhale -- claude
 ```
 
-Then MemoryWhale's **Recall** panel searches those conversation turns alongside
-your notes and terminal commands — each result with a "retrieved because…"
-explanation.
+That does two things:
+
+- **Records through MemoryWhale.** Delphin streams each turn to `mw turns`, so
+  MemoryWhale redacts secrets, applies its capture rules, and owns the schema.
+  No database path to type. MemoryWhale's **Recall** panel then searches those
+  turns alongside your notes and terminal commands.
+- **Warns you live.** When an error line scrolls past, Delphin asks `mw hint`
+  whether MemoryWhale has seen it. If so, a one-line hint appears while the
+  agent is still working:
+
+  ```text
+  🐬 MemoryWhale: seen 2 times, the fix was: xcode-select --install
+  ```
+
+Set `memorywhale = true` in `config.toml` to make it the default.
 
 ## Shared database contract
 
@@ -43,7 +55,9 @@ uses `session_id`, `verdict`, `cwd`, and the additive `turn_group_id` column.
 Neither project should repurpose those names with incompatible types or
 constraints.
 
-When `--db` points at an existing database, Delphin:
+With `--memorywhale`, MemoryWhale writes this table itself. The rules below
+apply to the older route, `--db` pointed at MemoryWhale's database file, which
+still works. When `--db` points at an existing database, Delphin:
 
 - enables WAL mode and a three-second busy timeout for concurrent access;
 - creates `agent_turns` when it is absent;

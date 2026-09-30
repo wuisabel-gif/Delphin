@@ -22,6 +22,9 @@ use delphin::memory::{self, MemoryLog};
 use delphin::replay;
 use delphin::supervisor::{self, Settings};
 
+/// MemoryWhale's CLI, found on PATH.
+const MW: &str = "mw";
+
 const HELP: &str = "\
 delphin — a duplex companion for AI agent CLIs
 
@@ -44,8 +47,11 @@ OPTIONS:
     --ready MARKER     output ending with MARKER means the agent is idle
                        (repeatable; e.g. --ready 'you> ')
     --db PATH          remember into this SQLite file instead of the default
+    --memorywhale      record through MemoryWhale (`mw turns`) and show live
+                       \"seen this before\" hints for errors (`mw hint`)
     --no-log           do not remember the conversation
     -h, --help         show this help
+    -V, --version      print the version
 
 Config: defaults are read from ./.delphin.toml or <config-dir>/delphin/config.toml;
 CLI flags override them.
@@ -54,6 +60,7 @@ EVERYTHING after `--` is the agent command to wrap.
 
 EXAMPLES:
     delphin -- claude
+    delphin --memorywhale -- claude
     delphin --arbiter question --interrupt ctrl-c -- bash examples/mock-agent.sh
     delphin recall postgres
     delphin replay --arbiter question
@@ -73,6 +80,10 @@ fn real_main() -> anyhow::Result<ExitCode> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if help_requested(&args) {
         print!("{HELP}");
+        return Ok(ExitCode::SUCCESS);
+    }
+    if matches!(args.first().map(String::as_str), Some("-V" | "--version")) {
+        println!("delphin {}", env!("CARGO_PKG_VERSION"));
         return Ok(ExitCode::SUCCESS);
     }
 
@@ -108,6 +119,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
     let mut ready_markers = cfg.ready_markers.clone();
     let mut interrupt_keywords = cfg.interrupt_keywords.clone();
     let mut logging = cfg.log;
+    let mut memorywhale = cfg.memorywhale;
     let mut db: Option<PathBuf> = None;
 
     // An --agent preset is a convenience baseline; apply it before the flag loop
@@ -138,6 +150,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
             "--interrupt-word" => interrupt_keywords.push(next_val(it.next(), "--interrupt-word")?),
             "--db" => db = Some(PathBuf::from(next_val(it.next(), "--db")?)),
             "--no-log" => logging = false,
+            "--memorywhale" => memorywhale = true,
             other => anyhow::bail!(
                 "unknown option `{other}` (did you forget `--` before the agent command?)"
             ),
@@ -149,6 +162,9 @@ fn real_main() -> anyhow::Result<ExitCode> {
         anyhow::bail!("no agent command provided");
     }
     validate_timing_options(tick_ms)?;
+    if memorywhale && db.is_some() {
+        anyhow::bail!("--memorywhale and --db both choose where to record; pick one");
+    }
 
     let arbiter_kind = ArbiterKind::parse(&arbiter_name).ok_or_else(|| {
         anyhow::anyhow!("unknown --arbiter '{arbiter_name}' (use: heuristic | question)")
@@ -181,6 +197,7 @@ fn real_main() -> anyhow::Result<ExitCode> {
         passthrough,
         rows,
         cols,
+        hints: memorywhale.then(|| MW.to_string()),
     };
 
     let arbiter = build_arbiter(arbiter_kind, interrupt_keywords, live);
@@ -194,7 +211,12 @@ fn real_main() -> anyhow::Result<ExitCode> {
         let cwd = std::env::current_dir()
             .ok()
             .and_then(|p| p.to_str().map(str::to_string));
-        match MemoryLog::open(session_id, cwd, db) {
+        let opened = if memorywhale {
+            MemoryLog::memorywhale(MW, session_id, cwd)
+        } else {
+            MemoryLog::open(session_id, cwd, db)
+        };
+        match opened {
             Ok(ml) => Some(ml),
             Err(e) => {
                 eprintln!("delphin: memory disabled ({e:#})");

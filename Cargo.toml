@@ -1,6 +1,6 @@
 [package]
 name = "delphin"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "A duplex companion for AI agent CLIs: keep talking while it thinks. Prompts queue, a pluggable arbiter decides interrupt-vs-wait, and the whole conversation is remembered locally."
 license = "MIT"
@@ -31,6 +31,7 @@ owo-colors = "4"
 portable-pty = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 terminal_size = "0.4"
 toml = "0.8"
 

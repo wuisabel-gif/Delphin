@@ -35,6 +35,8 @@ pub struct Config {
     pub ready_markers: Vec<String>,
     pub interrupt_keywords: Vec<String>,
     pub log: bool,
+    /// Record through MemoryWhale (`mw turns`) and show live hints (`mw hint`).
+    pub memorywhale: bool,
 }
 
 impl Default for Config {
@@ -54,6 +56,7 @@ impl Default for Config {
                 .map(|s| s.to_string())
                 .collect(),
             log: true,
+            memorywhale: false,
         }
     }
 }
