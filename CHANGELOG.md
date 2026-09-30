@@ -7,9 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Added
 
 - `delphin replay` for comparing recorded decisions with another arbiter policy.
+- Raw terminal passthrough, so full-screen agent UIs render correctly. (#10)
+- A reusable library API for embedding Delphin's supervisor and arbiter. (#14)
 - Live terminal-size propagation to the wrapped PTY.
 - Immediate idle detection through configurable ready markers.
 - A minimum busy-time guard for tools that work silently.
@@ -21,13 +25,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Agent output and queued prompts that remain during a crash are recorded in the
   local memory database.
 - The README now documents replay, current installation paths, and recorded demos.
+- CI runs on Linux and macOS, split by task, with a dependency audit. (#13, #32, #36)
 
 ### Fixed
 
+- The wrapped process's exit status is passed through. (#5)
+- Help arguments meant for the wrapped command are preserved. (#6)
+- Stale ready markers no longer end a busy period early. (#7)
+- Buffered process output is bounded. (#8)
+- Local memory privacy is hardened. (#11)
+- Timing options are validated. (#12)
+- A shared memory database's schema is validated before use, for example when
+  pointing `--db` at MemoryWhale. (#16)
+- Non-Unicode environment values are preserved. (#18, thanks @alloutflo)
+- Recall queries treat `%`, `_`, and `\` as literal characters instead of
+  SQLite `LIKE` wildcards. (#42, thanks @floze-the-genius)
 - Interrupt-driven process termination now shuts down cleanly.
 - The Claude plugin manifest no longer contains an unsupported `skills` field.
-- Recall queries now treat `%`, `_`, and `\` as literal characters instead of
-  SQLite `LIKE` wildcards.
 
 ## [0.2.0] - 2026-07-03
 
@@ -43,6 +57,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Initial PTY wrapper, prompt queue, heuristic arbiter, and local SQLite memory.
 
-[Unreleased]: https://github.com/wuisabel-gif/Delphin/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/wuisabel-gif/Delphin/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wuisabel-gif/Delphin/releases/tag/v0.1.0
