@@ -200,7 +200,10 @@ pub fn run(
     let mut child_exit_code: Option<u8> = None;
     let mut interrupt_sent_at: Option<Instant> = None;
 
-    let mut hints = settings.hints.clone().map(crate::hints::HintWatcher::spawn);
+    let mut hints = settings
+        .hints
+        .clone()
+        .map(|mw| crate::hints::HintWatcher::spawn(mw, !settings.passthrough));
     print_banner(settings, arbiter.as_ref(), &memlog);
 
     while let Ok(ev) = rx.recv() {
@@ -266,6 +269,18 @@ pub fn run(
                 }
             }
             Event::UserLine(text) => {
+                // `:fix` becomes a normal prompt, so the arbiter and queue apply.
+                let text = if crate::hints::is_fix_command(&text) {
+                    match hints.as_ref().and_then(|h| h.latest_fix()) {
+                        Some(fix) => crate::hints::fix_prompt(&fix),
+                        None => {
+                            notice!("no MemoryWhale fix to send yet (needs --memorywhale)");
+                            continue;
+                        }
+                    }
+                } else {
+                    text
+                };
                 if text.trim().is_empty() {
                     send_prompt(&mut writer, b"", &settings.submit);
                     continue;
