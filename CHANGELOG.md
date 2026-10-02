@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- `:fix` sends MemoryWhale's latest suggested fix to the agent as a prompt to
+  check, routed like any other prompt (queued if the agent is busy). Hints that
+  include a fix now end with `· type :fix to send it`. The fix is never run, and
+  control characters are stripped from hint output. Not available with
+  `--passthrough`.
+
+### Changed
+
+- Library API: `HintWatcher::spawn` takes an `offer_fix` flag.
+
 ## [0.4.0] - 2026-09-30
 
 ### Added

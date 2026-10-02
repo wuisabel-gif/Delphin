@@ -178,6 +178,13 @@ Or record into [MemoryWhale](https://github.com/wuisabel-gif/MemWhale) with
 before storing them, and errors in the agent's output get live hints from
 `mw hint` when MemoryWhale has seen them before. See [ECOSYSTEM.md](ECOSYSTEM.md).
 
+When a hint includes a fix, it ends with `· type :fix to send it`. Typing `:fix`
+at Delphin's prompt sends the agent "MemoryWhale says this error was fixed
+before by running `<fix>`. Check whether that applies here." through the normal
+routing, so it is queued if the agent is busy. Delphin never runs the fix
+itself; it is quoted as text with control characters removed. `:fix` is not
+available with `--passthrough`, since typed lines go straight to the agent.
+
 Or turn memory off entirely with `--no-log`.
 
 ### Privacy and retention
