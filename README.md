@@ -4,6 +4,8 @@
 
 # Delphin 🐬
 
+> **Install note:** crates.io may still serve an older release than this repo (workspace `Cargo.toml` is currently `0.3.0`). Prefer building from source (`cargo install --path .` or `cargo install --git https://github.com/wuisabel-gif/Delphin`) until the crates.io package is republished.
+
 **A duplex companion for AI agent CLIs**, written in Rust.
 
 [![Claude Code skill](https://img.shields.io/badge/Claude_Code-skill_available-D97757?logo=anthropic&logoColor=white)](skills/delphin/SKILL.md)
