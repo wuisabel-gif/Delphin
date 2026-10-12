@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-11
+
+### Changed
+
+- `:fix` reads MemoryWhale's new hint wording (`seen N times; a later command passed, possible fix: <command>`, MemoryWhale 0.19+) as well as the old `the fix was:` form.
+- The prompt `:fix` sends no longer says the command fixed the error before; it says the command was run and the next attempt passed, so it may be the fix.
+
 ## [0.5.0] - 2026-10-03
 
 ### Added
@@ -86,7 +93,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Initial PTY wrapper, prompt queue, heuristic arbiter, and local SQLite memory.
 
-[Unreleased]: https://github.com/wuisabel-gif/Delphin/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/wuisabel-gif/Delphin/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/wuisabel-gif/Delphin/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/wuisabel-gif/Delphin/compare/v0.2.0...v0.3.0

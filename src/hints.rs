@@ -5,7 +5,7 @@
 //! error before, a one-line hint is printed to stderr, for example:
 //!
 //! ```text
-//! 🐬 MemoryWhale: seen 2 times, the fix was: xcode-select --install · type :fix to send it
+//! 🐬 MemoryWhale: seen 2 times; a later command passed, possible fix: xcode-select --install · type :fix to send it
 //! ```
 //!
 //! The latest suggested fix is kept so the user can send it to the agent with
@@ -119,14 +119,20 @@ pub fn is_fix_command(line: &str) -> bool {
 /// The prompt that hands a suggested fix to the agent as text to evaluate.
 pub fn fix_prompt(fix: &str) -> String {
     format!(
-        "MemoryWhale says this error was fixed before by running `{fix}`. \
-         Check whether that applies here."
+        "MemoryWhale says that after this error was seen before, `{fix}` was run \
+         and the next attempt passed, so it may be the fix. Check whether that applies here."
     )
 }
 
-/// The command from `seen N times, the fix was: <command>`, if there is one.
+/// The command from `seen N times; a later command passed, possible fix:
+/// <command>` (MemoryWhale 0.19+) or `seen N times, the fix was: <command>`
+/// (earlier releases), if there is one.
 fn parse_fix(hint: &str) -> Option<String> {
-    let fix = hint.split_once("the fix was:")?.1.trim();
+    let fix = hint
+        .split_once("possible fix:")
+        .or_else(|| hint.split_once("the fix was:"))?
+        .1
+        .trim();
     (!fix.is_empty()).then(|| fix.chars().take(MAX_FIX).collect())
 }
 
@@ -181,6 +187,10 @@ mod tests {
             parse_fix("seen 2 times, the fix was: xcode-select --install").as_deref(),
             Some("xcode-select --install")
         );
+        assert_eq!(
+            parse_fix("seen 2 times; a later command passed, possible fix: touch .cfg").as_deref(),
+            Some("touch .cfg")
+        );
         assert_eq!(parse_fix("seen 3 times, no fix recorded yet"), None);
         assert_eq!(parse_fix("seen 1 times, the fix was:   "), None);
     }
@@ -197,8 +207,9 @@ mod tests {
     fn builds_fix_prompt() {
         assert_eq!(
             fix_prompt("xcode-select --install"),
-            "MemoryWhale says this error was fixed before by running \
-             `xcode-select --install`. Check whether that applies here."
+            "MemoryWhale says that after this error was seen before, \
+             `xcode-select --install` was run and the next attempt passed, so it may be \
+             the fix. Check whether that applies here."
         );
     }
 
