@@ -124,12 +124,12 @@ pub fn fix_prompt(fix: &str) -> String {
     )
 }
 
-/// The command from `seen N times; a later command passed, possible fix:
-/// <command>` (MemoryWhale 0.19+) or `seen N times, the fix was: <command>`
-/// (earlier releases), if there is one.
+/// The command at the end of a MemoryWhale hint: after `confirmed fix:` or
+/// `possible fix:` (MemoryWhale 0.19+) or `the fix was:` (earlier releases).
 fn parse_fix(hint: &str) -> Option<String> {
     let fix = hint
-        .split_once("possible fix:")
+        .split_once("confirmed fix:")
+        .or_else(|| hint.split_once("possible fix:"))
         .or_else(|| hint.split_once("the fix was:"))?
         .1
         .trim();
@@ -189,6 +189,13 @@ mod tests {
         );
         assert_eq!(
             parse_fix("seen 2 times; a later command passed, possible fix: touch .cfg").as_deref(),
+            Some("touch .cfg")
+        );
+        assert_eq!(
+            parse_fix(
+                "seen 3 times; worked 2 of 2 times, last run by Claude Code 2 days ago, confirmed fix: touch .cfg"
+            )
+            .as_deref(),
             Some("touch .cfg")
         );
         assert_eq!(parse_fix("seen 3 times, no fix recorded yet"), None);
